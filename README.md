@@ -41,6 +41,7 @@ The desktop app and the browser version share the folder list.
 | Control | What it does |
 |---|---|
 | ☰ | Show or hide the folder list |
+| ▤ | Pages view or continuous view (`Page Up` / `Page Down` move one page in pages view) |
 | − 100% + | Zoom the note |
 | ⎙ | Print the note, or save it as a PDF from the print dialog |
 | ⚙ | Fonts and colours |
@@ -74,9 +75,14 @@ Printing uses Letter pages with the study PDF's margins. A table row, a code blo
 with its lead-in paragraph is not cut in two when it fits on a page.
 
 `public/study.css` is a screen version of the stylesheet used for the study PDFs: warm paper,
-serif body text, blue sans-serif headings, striped tables, full-width diagrams. The note is one
-continuous sheet instead of separate pages. Every font and colour is a CSS variable at the top of
-that file.
+serif body text, blue sans-serif headings, striped tables, full-width diagrams. Every font and
+colour is a CSS variable at the top of that file.
+
+The note is shown as one continuous sheet, or, in pages view, cut into Letter pages like the
+PDF, with a page number on each and "page 3 of 32" in the top bar. A page is never cut through
+a table row or a diagram with its lead-in paragraph, a heading is never left alone at the bottom
+of a page, and a table that continues on the next page repeats its header row. The view is
+remembered, and switching keeps the place being read.
 
 ## Layout
 
@@ -84,6 +90,7 @@ that file.
 |---|---|
 | `public/` | Front end: plain HTML, CSS and JavaScript, no build step |
 | `public/render.js` | Markdown to HTML, in the page |
+| `public/pages.js` | Pages view: cuts the rendered note into Letter pages |
 | `public/settings.js` | Fonts and colours: the looks, the font lists, checking of stored values |
 | `public/backend.js` | The one place that talks to the server or to the desktop app |
 | `public/vendor/` | Browser builds of markdown-it and highlight.js (`npm run vendor` refreshes them) |
@@ -104,5 +111,5 @@ npm test                         # Node path guard and renderer
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md): a pages view, single files and GitHub
+See [ROADMAP.md](ROADMAP.md): single files and GitHub
 folders or files as sources, and a hosted PWA version.

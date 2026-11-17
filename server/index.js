@@ -18,6 +18,7 @@ const STATIC = {
   '/render.js': ['render.js', 'text/javascript; charset=utf-8'],
   '/backend.js': ['backend.js', 'text/javascript; charset=utf-8'],
   '/settings.js': ['settings.js', 'text/javascript; charset=utf-8'],
+  '/pages.js': ['pages.js', 'text/javascript; charset=utf-8'],
   '/vendor/markdown-it.min.js': ['vendor/markdown-it.min.js', 'text/javascript; charset=utf-8'],
   '/vendor/markdown-it-task-lists.min.js': ['vendor/markdown-it-task-lists.min.js', 'text/javascript; charset=utf-8'],
   '/vendor/highlight.min.js': ['vendor/highlight.min.js', 'text/javascript; charset=utf-8'],

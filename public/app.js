@@ -2,6 +2,7 @@
 // local server in a browser and Tauri commands in the desktop app. Markdown is rendered here.
 import { backend } from './backend.js';
 import { createRenderer } from './render.js';
+import { paginate, currentPage } from './pages.js';
 import { PRESETS, FONTS, SIZE, COLORS, DEFAULTS, normalize, variables, shownColor } from './settings.js';
 
 const render = createRenderer({
@@ -20,7 +21,7 @@ const notice = $('mdr-notice');
 const outline = $('mdr-outline');
 const crumb = $('mdr-crumb');
 
-const state = { roots: [], current: null, stopWatch: null, headings: [] };
+const state = { roots: [], current: null, stopWatch: null, headings: [], html: '', toc: [], paged: false, layoutRun: 0 };
 
 const store = {
   get(key, fallback) {
@@ -202,8 +203,12 @@ function closeDoc() {
   state.stopWatch = null;
   state.current = null;
   state.headings = [];
+  state.html = '';
+  state.toc = [];
   sheet.hidden = true;
   sheet.replaceChildren();
+  sheet.classList.remove('paged');
+  updatePageInfo();
   outline.replaceChildren();
   crumb.replaceChildren();
   document.title = 'md-reader';
@@ -231,18 +236,17 @@ async function openDoc(root, path, { push = false, hash = '', keepScroll = false
     return;
   }
   const sameDoc = state.current?.root === root && state.current?.path === doc.path;
-  const top = desk.scrollTop;
+  const place = keepScroll && sameDoc ? readingPlace() : null;
   state.current = { root, path: doc.path };
+  state.html = doc.html;
+  state.toc = doc.toc;
 
-  // The HTML comes from render.js, which does not pass a note's raw HTML through.
-  sheet.innerHTML = doc.html;
   sheet.hidden = false;
   notice.replaceChildren();
   document.title = `${doc.title} · md-reader`;
   const rootInfo = state.roots.find((r) => r.id === root);
   crumb.replaceChildren(`${rootInfo ? rootInfo.name : ''} / `, el('b', { textContent: doc.path }));
   crumb.title = rootInfo ? `${rootInfo.path}/${doc.path}` : doc.path;
-  renderOutline(doc.toc);
   markActive();
   store.set('last', state.current);
 
@@ -250,11 +254,16 @@ async function openDoc(root, path, { push = false, hash = '', keepScroll = false
   if (push) history.pushState(null, '', url);
   else if (!keepScroll) history.replaceState(null, '', url);
 
-  if (keepScroll && sameDoc) desk.scrollTop = top;
-  else if (hash && document.getElementById(decodeURIComponent(hash.slice(1)))) {
-    document.getElementById(decodeURIComponent(hash.slice(1))).scrollIntoView();
-  } else desk.scrollTop = store.get(scrollKey(root, doc.path), 0);
-  updateSpy();
+  await layout({
+    after() {
+      if (state.html !== doc.html) return; // another note was opened meanwhile
+      const target = hash && document.getElementById(decodeURIComponent(hash.slice(1)));
+      if (keepScroll && sameDoc) showPlace(place);
+      else if (target) target.scrollIntoView();
+      else showPlace(store.get(scrollKey(root, doc.path), null));
+    },
+  });
+  if (state.current?.root !== root || state.current?.path !== doc.path) return;
   if (!sameDoc || !state.stopWatch) watch(root, doc.path);
 }
 
@@ -264,6 +273,161 @@ function watch(root, path) {
     if (state.current?.root === root && state.current?.path === path) openDoc(root, path, { keepScroll: true });
   });
 }
+
+// ---------- Continuous view and pages view ----------
+// The note is always laid out from the rendered HTML: as one sheet, or cut into pages.
+
+// The blocks that exist once in both views (the second half of a block cut by a page is `.cont`).
+const PLACES = ['p', 'li', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map((tag) => `${tag}:not(.cont)`).join(', ') + ', tbody > tr, img';
+const places = () => [...sheet.querySelectorAll(PLACES)];
+
+// The first block on screen and how far its top is from the top of the desk, so the same block
+// can be shown at the same height after a new layout, in either view. null: the top of the note.
+function readingPlace() {
+  if (desk.scrollTop < 4) return null;
+  const top = desk.getBoundingClientRect().top;
+  const all = places();
+  const index = all.findIndex((node) => node.getBoundingClientRect().bottom > top + 1);
+  return index < 0 ? null : { index, offset: Math.round(all[index].getBoundingClientRect().top - top) };
+}
+
+function showPlace(place) {
+  if (typeof place === 'number') desk.scrollTop = place; // stored by an older version
+  const node = place && typeof place === 'object' && places()[place.index];
+  if (!node) {
+    if (!place) desk.scrollTop = 0;
+    return;
+  }
+  const box = node.getBoundingClientRect();
+  // A long block may have been cut by a page since: never scroll past its own end.
+  const offset = Math.max(Number(place.offset) || 0, 24 - box.height);
+  desk.scrollTop += box.top - desk.getBoundingClientRect().top - offset;
+}
+
+function whenImagesLoaded(within, limit) {
+  const images = [...within.querySelectorAll('img')];
+  for (const img of images) img.loading = 'eager';
+  const loaded = images
+    .filter((img) => !img.complete)
+    .map((img) => new Promise((resolve) => {
+      img.addEventListener('load', resolve, { once: true });
+      img.addEventListener('error', resolve, { once: true });
+    }));
+  return Promise.race([Promise.all(loaded), new Promise((resolve) => setTimeout(resolve, limit))]);
+}
+
+function showContinuous() {
+  // The HTML comes from render.js, which does not pass a note's raw HTML through.
+  sheet.innerHTML = state.html;
+  sheet.classList.remove('paged');
+  renderOutline(state.toc);
+}
+
+// Cuts the pages in a copy of the sheet that is laid out but not shown, then swaps them in, so
+// the note on screen does not flash while pictures load.
+async function showPages() {
+  const html = state.html;
+  const work = sheet.cloneNode(false);
+  work.removeAttribute('id');
+  work.hidden = false;
+  work.classList.remove('paged');
+  work.innerHTML = html;
+  const holder = el('div', { className: 'measure' }, [work]);
+  desk.append(holder);
+  try {
+    // A page can only be cut right once the height of every picture is known.
+    await whenImagesLoaded(work, 4000);
+    if (document.fonts?.status === 'loading') await document.fonts.ready;
+    if (state.html !== html) return; // closed, or another note was opened meanwhile
+    paginate(work);
+    sheet.replaceChildren(...work.childNodes);
+    sheet.classList.add('paged');
+  } finally {
+    holder.remove();
+  }
+  renderOutline(state.toc);
+  // A picture that arrives after the wait above changes the height of its page.
+  for (const img of sheet.querySelectorAll('img')) {
+    if (!img.complete) img.addEventListener('load', relayoutSoon, { once: true });
+  }
+}
+
+// One layout at a time. `keepPlace` stays at the block being read; `after` runs once the note
+// is on the sheet (to scroll). `paged` can be forced (printing uses one sheet).
+let layoutQueue = Promise.resolve();
+function layout({ paged = state.paged, keepPlace = false, after } = {}) {
+  const task = layoutQueue.then(async () => {
+    const place = keepPlace ? readingPlace() : null;
+    if (paged && state.html) await showPages();
+    else showContinuous();
+    if (keepPlace) showPlace(place);
+    after?.();
+    lastWidth = sheet.getBoundingClientRect().width;
+    updateSpy();
+    updatePageInfo();
+  });
+  layoutQueue = task.catch(() => {});
+  return task;
+}
+
+const relayout = () => (state.current ? layout({ keepPlace: true }) : Promise.resolve());
+let relayoutTimer = null;
+function relayoutSoon() {
+  clearTimeout(relayoutTimer);
+  relayoutTimer = setTimeout(() => {
+    if (sheet.classList.contains('paged')) relayout();
+  }, 300);
+}
+
+// A narrower or wider sheet (small window, zoom) wraps the text differently: cut the pages again.
+let lastWidth = 0;
+new ResizeObserver(() => {
+  const width = sheet.getBoundingClientRect().width;
+  if (!sheet.classList.contains('paged') || Math.abs(width - lastWidth) < 1) return;
+  lastWidth = width;
+  relayoutSoon();
+}).observe(sheet);
+
+function updatePageInfo() {
+  const info = $('mdr-page-info');
+  const total = sheet.classList.contains('paged') ? sheet.children.length : 0;
+  info.hidden = !total;
+  if (!total) return;
+  const box = desk.getBoundingClientRect();
+  info.textContent = `page ${currentPage(sheet, box.top + box.height / 2)} of ${total}`;
+}
+
+function setView(paged) {
+  state.paged = paged;
+  store.set('view', paged ? 'pages' : 'continuous');
+  const button = $('mdr-view');
+  button.setAttribute('aria-pressed', String(paged));
+  button.title = paged ? 'Pages view is on. Click for continuous view.' : 'Continuous view is on. Click for pages view.';
+  return relayout();
+}
+$('mdr-view').addEventListener('click', () => setView(!state.paged));
+
+// Page Up and Page Down move one page at a time in pages view, or one screen when a page is
+// taller than the window (large zoom), so no part of a page is skipped.
+function turnPage(step) {
+  const top = desk.getBoundingClientRect().top + 12;
+  const screen = desk.clientHeight - 40;
+  const tops = [...sheet.children].map((page) => page.getBoundingClientRect().top);
+  if (step > 0) {
+    const next = tops.find((t) => t > top + 4);
+    desk.scrollTop += next === undefined ? screen : Math.min(screen, next - top);
+  } else {
+    const previous = tops.findLast((t) => t < top - 4);
+    desk.scrollTop -= previous === undefined ? screen : Math.min(screen, top - previous);
+  }
+}
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'PageDown' && event.key !== 'PageUp') return;
+  if (!sheet.classList.contains('paged') || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (document.querySelector('dialog[open]') || event.target.closest?.('input, textarea, select')) return;
+  event.preventDefault();
+  turnPage(event.key === 'PageDown' ? 1 : -1);
+});
 
 // ---------- Outline ----------
 
@@ -298,9 +462,10 @@ desk.addEventListener(
   'scroll',
   () => {
     updateSpy();
+    updatePageInfo();
     clearTimeout(scrollTimer);
     scrollTimer = setTimeout(() => {
-      if (state.current) store.set(scrollKey(state.current.root, state.current.path), Math.round(desk.scrollTop));
+      if (state.current) store.set(scrollKey(state.current.root, state.current.path), readingPlace());
     }, 200);
   },
   { passive: true },
@@ -378,6 +543,8 @@ function changeSettings(patch) {
   $('mdr-settings-error').textContent = '';
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveSettingsNow, 400);
+  // Another font or size moves the page breaks.
+  relayoutSoon();
 }
 
 function saveSettingsNow() {
@@ -456,22 +623,26 @@ async function loadSettings() {
 // ---------- Print ----------
 // Images load lazily, so the ones not scrolled to yet are fetched before the print dialog opens.
 
+// The printer cuts its own pages, so a note shown in pages view is printed from one sheet.
+
 async function printDoc() {
   if (!state.current) return;
-  const images = [...sheet.querySelectorAll('img')];
-  for (const img of images) img.loading = 'eager';
-  const loaded = images
-    .filter((img) => !img.complete)
-    .map((img) => new Promise((resolve) => {
-      img.addEventListener('load', resolve, { once: true });
-      img.addEventListener('error', resolve, { once: true });
-    }));
-  await Promise.race([Promise.all(loaded), new Promise((resolve) => setTimeout(resolve, 5000))]);
+  if (sheet.classList.contains('paged')) await layout({ paged: false, keepPlace: true });
+  await whenImagesLoaded(sheet, 5000);
   window.print();
 }
 $('mdr-print').addEventListener('click', printDoc);
 window.addEventListener('beforeprint', () => {
+  // Reached without the button (Ctrl+P, the browser's menu): the sheet is rebuilt at once.
+  if (sheet.classList.contains('paged')) {
+    const place = readingPlace();
+    showContinuous();
+    showPlace(place);
+  }
   for (const img of sheet.querySelectorAll('img')) img.loading = 'eager';
+});
+window.addEventListener('afterprint', () => {
+  if (state.paged && !sheet.classList.contains('paged')) relayout();
 });
 
 // ---------- Full screen ----------
@@ -596,6 +767,8 @@ async function start() {
   if (store.get('no-sidebar', false) || window.innerWidth <= 760) app.classList.add('no-sidebar');
   if (store.get('no-outline', false)) app.classList.add('no-outline');
   setZoom(store.get('zoom', 1));
+  state.paged = store.get('view', 'continuous') === 'pages';
+  $('mdr-view').setAttribute('aria-pressed', String(state.paged));
   buildSettingsForm();
   await loadSettings();
   try {

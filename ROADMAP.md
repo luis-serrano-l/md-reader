@@ -3,22 +3,10 @@
 Not built yet. Listed in the order they were asked for, not in priority order.
 
 Built so far: the browser version (localhost), the desktop app (Tauri, never Electron), the
-fonts and colours panel, and printing to paper or PDF.
+fonts and colours panel, printing to paper or PDF, and the choice between continuous view and
+pages view.
 Still open for the desktop app: packages for macOS and Windows, and removing the Node server
 once the browser version is no longer wanted.
-
-## Choose between continuous view and pages view
-
-A switch in the top bar between the two ways of showing a note:
-
-- **Continuous** (what exists today): one long sheet, scrolled from top to bottom.
-- **Pages**: the note cut into Letter-size pages like the PDF, with a gap between pages, a page
-  number on each, and "page 3 of 32" in the top bar. Page Up / Page Down move one page at a time.
-
-In pages view a table row, a code block or a diagram with its lead-in paragraph is not cut in
-two when it fits on one page (`.diagram-block` already marks the diagram case), and a heading is
-never left alone at the bottom of a page. The choice is remembered, and the place being read is
-kept when switching.
 
 ## Four kinds of source, side by side
 

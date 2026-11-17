@@ -61,6 +61,12 @@ file busy".
   nothing; the libraries are passed to `createRenderer()`. Core rules add heading ids and the
   outline, rewrite relative images to asset URLs and relative `.md` links to in-app links, and
   wrap a `.svg` diagram with the paragraph that introduces it (`.diagram-block`).
+- `public/pages.js`: pages view. `paginate(sheet)` moves the rendered blocks into
+  `<section class="page">` elements, measuring as it goes; a block that does not fit is split
+  (text between lines, lists between items, tables between rows) or starts the next page. The
+  second half of a split block has class `cont`. `app.js` always lays the note out again from
+  the rendered HTML (`layout()`), so a view change, a font change or printing never works on
+  already-cut pages. It needs a real browser layout, so it has no unit test.
 - `public/settings.js`: fonts and colours. Pure data and functions, tested in
   `test/settings.test.js`. A setting only ever becomes a CSS custom property; `normalize()`
   drops anything that is not a known look, a listed font, a size in range or a `#rrggbb`

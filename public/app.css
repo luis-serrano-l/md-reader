@@ -90,7 +90,15 @@ details[open] > summary::before { content: "▾"; }
 .zoom-value:hover { background: var(--ui-bg-2); }
 
 .desk { flex: 1; overflow: auto; padding: 28px 24px 80px; outline: none; }
-.desk .sheet { margin: 0 auto; outline: 1px solid var(--sheet-edge); box-shadow: 0 1px 2px rgba(60, 50, 30, 0.18), 0 8px 28px rgba(60, 50, 30, 0.14); }
+.desk .sheet, .desk .sheet.paged > .page { outline: 1px solid var(--sheet-edge);
+  box-shadow: 0 1px 2px rgba(60, 50, 30, 0.18), 0 8px 28px rgba(60, 50, 30, 0.14); }
+.desk .sheet { margin: 0 auto; }
+.desk .sheet.paged { outline: 0; box-shadow: none; }
+.desk .sheet.paged > .page + .page { margin-top: 22px; }
+/* Where pages are cut before they are shown: laid out at the sheet's width, taking no room. */
+.measure { height: 0; overflow: hidden; visibility: hidden; }
+.page-info { color: var(--ui-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.icon-btn[aria-pressed="true"] { background: var(--ui-active); color: var(--ui-head); }
 .notice { max-width: 520px; margin: 12vh auto 0; text-align: center; color: var(--ui-muted); line-height: 1.6; }
 .notice:empty { display: none; }
 .notice h2 { color: var(--ui-ink); font-size: 18px; margin: 0 0 6px; }

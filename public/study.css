@@ -56,7 +56,7 @@
 .sheet h1, .sheet h2, .sheet h3, .sheet h4 { font-family: var(--font-head); line-height: 1.25; scroll-margin-top: 16px; }
 .sheet h1 { font-size: 21pt; color: var(--h1); margin: 26pt 0 16pt; padding-bottom: 6pt; border-bottom: 2px solid var(--h1); }
 /* The PDF title sits between two rules (pandoc's empty title block drew the upper one). */
-.sheet > h1:first-child { padding-top: 16pt; border-top: 2px solid var(--h1); }
+.sheet > h1:first-child, .sheet.paged > .page:first-child > .page-body > h1:first-child { padding-top: 16pt; border-top: 2px solid var(--h1); }
 .sheet h2 { font-size: 16pt; color: var(--h2); margin: 26pt 0 8pt; padding-bottom: 3pt; border-bottom: 1px solid var(--h2-rule); }
 .sheet h3 { font-size: 13pt; color: var(--h3); margin: 18pt 0 5pt; }
 .sheet h4 { font-size: 11.5pt; color: var(--h4); margin: 14pt 0 4pt; }
@@ -86,6 +86,9 @@
 .sheet th, .sheet td { border: 1px solid var(--rule); padding: 4pt 7pt; vertical-align: top; text-align: left; }
 .sheet th { background: var(--th-bg); color: var(--th-ink); font-family: var(--font-head); font-weight: bold; }
 .sheet tbody tr:nth-child(even) td { background: var(--zebra); }
+/* A table continued on the next page (pages view) keeps the striping it had. */
+.sheet tbody.odd-start tr:nth-child(even) td { background: none; }
+.sheet tbody.odd-start tr:nth-child(odd) td { background: var(--zebra); }
 .sheet .align-right { text-align: right; }
 .sheet .align-center { text-align: center; }
 
@@ -110,3 +113,16 @@
 .sheet .hljs-number, .sheet .hljs-symbol { color: var(--hl-number); }
 .sheet .hljs-title, .sheet .hljs-section, .sheet .hljs-attr { color: var(--hl-title); }
 .sheet .hljs-meta { color: var(--hl-meta); }
+
+/* Pages view (public/pages.js): the sheet becomes a column of Letter pages. */
+.sheet.paged { background: none; padding: 0; counter-reset: mdr-page; }
+.sheet.paged > .page { box-sizing: border-box; position: relative; display: flex; flex-direction: column;
+                       min-height: calc(var(--page-width) * 11 / 8.5); background: var(--paper);
+                       padding: clamp(20px, 10.5%, var(--margin-y)) clamp(16px, 16.5%, var(--margin-x));
+                       counter-increment: mdr-page; scroll-margin-top: 12px; }
+.sheet.paged > .page::after { content: counter(mdr-page); position: absolute; left: 0; right: 0; bottom: 0.32in;
+                              text-align: center; font: 9pt var(--font-head); color: var(--ink); opacity: 0.55; }
+.sheet.paged .page-body { flex: 1 0 auto; display: flow-root; min-width: 0; }
+.sheet.paged .page-body > :first-child { margin-top: 0; }
+.sheet.paged .page-body > :last-child { margin-bottom: 0; }
+.sheet li.cont { list-style: none; }   /* the rest of an item cut by a page: no second mark */
