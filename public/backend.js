@@ -1,5 +1,6 @@
-// The one place the front end talks to whatever reads the disk. Two implementations with the
-// same methods: the local Node server (over HTTP) and the desktop app (Tauri commands).
+// The one place the front end talks to whatever holds the notes. Three implementations with
+// the same methods: the local Node server (over HTTP), the desktop app (Tauri commands) and the
+// hosted version (web-backend.js: GitHub only, no disk, so no addRoot/addFile/browse there).
 //
 //   listRoots()                -> [{ id, path, name, kind: 'folder' | 'file', github, missing }]
 //   addRoot(path)              -> root (a folder)
@@ -19,6 +20,8 @@
 // Only over HTTP:   browse(dir, files) -> sub-folders (and .md file names), for the in-page picker
 // Only on desktop:  pickFolder(), pickFile() -> path or null (native dialog), openExternal(url),
 //                   exitFullscreen()
+
+import { webBackend } from './web-backend.js';
 
 const enc = encodeURIComponent;
 
@@ -113,4 +116,12 @@ function tauriBackend({ core, event }) {
   };
 }
 
-export const backend = window.__TAURI__ ? tauriBackend(window.__TAURI__) : httpBackend();
+// The local server only ever answers on a loopback name. Any other address is the hosted
+// version: a static site with no server behind it (web-backend.js).
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+export const backend = window.__TAURI__
+  ? tauriBackend(window.__TAURI__)
+  : LOOPBACK.has(location.hostname)
+    ? httpBackend()
+    : webBackend();

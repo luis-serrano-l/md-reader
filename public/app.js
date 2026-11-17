@@ -11,7 +11,8 @@ const render = createRenderer({
   taskLists: window.markdownitTaskLists,
 });
 const enc = encodeURIComponent;
-const docUrl = (root, path) => `/?root=${enc(root)}&path=${enc(path)}`;
+// Relative, so the hosted version also works below a sub-path of its site.
+const docUrl = (root, path) => `?root=${enc(root)}&path=${enc(path)}`;
 const $ = (id) => document.getElementById(id);
 const app = $('mdr-app');
 const rootsEl = $('mdr-roots');
@@ -160,7 +161,7 @@ function markActive() {
 
 async function removeRoot(root) {
   const what = root.github
-    ? 'The downloaded copy is deleted. The repository on GitHub is not touched.'
+    ? `${backend.kind === 'web' ? '' : 'The downloaded copy is deleted. '}The repository on GitHub is not touched.`
     : root.kind === 'file' ? 'The file stays on disk.' : 'The folder and its files stay on disk.';
   const yes = await ask(`Remove "${root.name}" from md-reader?`, what, 'Remove');
   if (!yes) return;
@@ -172,7 +173,7 @@ async function removeRoot(root) {
   }
   if (state.current?.root === root.id) {
     closeDoc();
-    history.replaceState(null, '', '/');
+    history.replaceState(null, '', location.pathname);
   }
   await loadRoots();
   if (!state.current) showWelcome();
@@ -724,7 +725,7 @@ async function showTokenState() {
   }
   $('mdr-github-token-state').textContent = saved
     ? 'A token is saved on this computer and is used for every download. It cannot be read back, only replaced or forgotten.'
-    : 'No token is saved. Public repositories need none. For a private one, paste a token that may read it (a fine-grained token with read-only "Contents" access is enough). It is kept in a file only your user can read.';
+    : 'No token is saved. Public repositories need none. For a private one, paste a token that may read it (a fine-grained token with read-only "Contents" access is enough). ' + (backend.kind === 'web' ? 'It is kept in this browser, on this device.' : 'It is kept in a file only your user can read.');
   $('mdr-github-token-clear').hidden = !saved;
 }
 
@@ -799,13 +800,14 @@ const isMd = (path) => /\.md$/i.test(path);
 
 // The kinds of source that can be added. Each `add` opens its own dialog.
 const SOURCES = [
-  { title: 'Folder on this computer', text: 'All the .md files in it, sub-folders included.', add: () => pickLocal(false) },
-  { title: 'One file on this computer', text: 'Only that .md file. The rest of its folder stays closed.', add: () => pickLocal(true) },
+  { title: 'Folder on this computer', text: 'All the .md files in it, sub-folders included.', add: () => pickLocal(false), local: true },
+  { title: 'One file on this computer', text: 'Only that .md file. The rest of its folder stays closed.', add: () => pickLocal(true), local: true },
   { title: 'From GitHub', text: 'A repository, a folder in it or one .md file, downloaded to read. Private ones with a token.', add: () => openGithub() },
 ];
 
 function buildSourceChoices() {
-  for (const source of SOURCES) {
+  // The hosted version has no disk to read: only GitHub is offered there.
+  for (const source of SOURCES.filter((s) => !s.local || backend.kind !== 'web')) {
     const button = el('button', { type: 'button' }, [el('b', { textContent: source.title }), el('span', { textContent: source.text })]);
     button.addEventListener('click', () => {
       $('mdr-sources').close();

@@ -1,9 +1,11 @@
 # md-reader
 
-Local app that renders `.md` files from user-chosen folders with the "study PDF" look.
-One no-build front end (`public/`) with two back ends: a Node server on `127.0.0.1` (browser
-version) and a Tauri app (`src-tauri/`, desktop version). See `README.md` for usage and
-`ROADMAP.md` for planned work.
+App that renders `.md` files from user-chosen sources (local folders, single local files,
+GitHub folders or files) with the "study PDF" look. One no-build front end (`public/`) with
+three back ends: a Node server on `127.0.0.1` (browser version), a Tauri app (`src-tauri/`,
+desktop version) and, when `public/` is served as a static site from any non-loopback address,
+GitHub's API (hosted version, a PWA). See `README.md` for usage and `ROADMAP.md` for what is
+open.
 
 ## Commands
 
@@ -19,7 +21,9 @@ npm run vendor             # refresh public/vendor/ from node_modules
 
 For manual testing, use a scratch folder list so the owner's real one is untouched:
 `MD_READER_CONFIG=/some/tmp/config.json PORT=4799 npm start`. The desktop app reads the same
-variable. Close the desktop app before `npm run desktop:build`, or packaging fails with "Text
+variable. With it set, GitHub downloads and the token file also go next to that file
+(`md-reader-data/`, `github-token`), not to the owner's.
+`(cd src-tauri && XDG_DATA_HOME=/some/tmp cargo test -- --ignored)` runs a real download. Close the desktop app before `npm run desktop:build`, or packaging fails with "Text
 file busy".
 
 ## Rules that must not be broken
@@ -30,9 +34,26 @@ file busy".
   through `RootStore.resolveInside()` in `server/roots.js`. Rust: every command and the `mdr`
   image protocol go through `RootStore::resolve_inside` in `src-tauri/src/roots.rs`. Never build
   a file path from request input anywhere else. A change to the guard is made in both, with a
-  test in `test/roots.test.js` and in the `tests` module of `roots.rs`.
-- **Nothing is readable until the user adds a folder.** Do not pre-add folders or write the
-  owner's `~/.config/md-reader/config.json` from code or during testing.
+  test in `test/roots.test.js` and in the `tests` module of `roots.rs`. The hosted version has
+  its own (`resolveInside` in `public/web-backend.js`, tested in `test/web.test.js`).
+- **Sources.** A config entry is a string (local folder) or `{ path, kind: "folder" | "file",
+  github? }`. A single file opens only itself, plus images in its folder or below (none when
+  that folder is the home folder or `/`). A source with `github` must resolve inside
+  `github.dir`; the guard checks it on every read, because a repository can hold links.
+- **GitHub code** (`server/github.js`, `src-tauri/src/github.rs`, kept identical). The one
+  exception to "no path from request input": the download folder
+  `repos/<owner>/<repo>/<key>` is built from an address that `parseGithubUrl` has checked part
+  by part. Keep it so: no `..`, no leading `-`, nothing `git` could read as an option; always
+  `--` before addresses and paths. Only folders exactly three levels below `repos/` are ever
+  deleted. The app only clones, fetches and resets: never a commit or a push.
+- **The token is write-only.** Saved in `github-token` (mode 0600) next to the config file;
+  no route or command returns it, no error message contains it, and it reaches `git` only
+  through `GIT_CONFIG_*` environment variables of one command (never the URL, never
+  `.git/config`). In the hosted version it is in the browser's Cache storage (`mdr-private`),
+  read by `web-backend.js` and `sw.js`, and sent to `api.github.com` only.
+- **Nothing is readable until the user adds a source.** Do not pre-add any, and do not write
+  the owner's `~/.config/md-reader/config.json`, `github-token` or
+  `~/.local/share/md-reader/` from code or during testing.
 - **The desktop page gets no plugin permissions.** `src-tauri/capabilities/default.json` grants
   `core:default` only. The folder dialog and the link opener are called from Rust commands
   (`pick_folder`, `open_external`), never from the page.
@@ -41,7 +62,8 @@ file busy".
 - **No raw HTML from notes.** markdown-it runs with `html: false`; the front end assigns the
   rendered HTML with `innerHTML` and relies on that.
 - **No inline styles or inline scripts.** The page's Content-Security-Policy forbids them (set
-  in `server/index.js` and in `src-tauri/tauri.conf.json`; keep the two in step). Table
+  in `server/index.js` and in `src-tauri/tauri.conf.json`; keep the two in step; the hosted
+  version adds its own as a `<meta>` from `web-backend.js`, since a static host sends none). Table
   alignment is a class (`align-right`), not a `style` attribute. Setting `element.style` from
   JavaScript is fine.
 - **No Electron, ever** (owner's rule: too heavy on RAM). The desktop app, when built, is Tauri.
@@ -49,7 +71,7 @@ file busy".
   dependency. The page uses three libraries, committed as browser builds in `public/vendor/`:
   `markdown-it`, `markdown-it-task-lists`, `highlight.js`. Rust crates: `tauri`,
   `tauri-plugin-dialog`, `tauri-plugin-opener`, `notify`, `serde`, `serde_json`,
-  `percent-encoding`. Development only (npm): `@tauri-apps/cli` (builds the desktop app) and
+  `percent-encoding`. GitHub sources run the `git` program; there is no git or HTTP library. Development only (npm): `@tauri-apps/cli` (builds the desktop app) and
   `@highlightjs/cdn-assets` (the browser build of highlight.js copied into `public/vendor/`).
   Ask before adding another to any of these lists.
 
@@ -73,13 +95,27 @@ file busy".
   colour. Stored under `settings` in the config file, which both back ends write one key at a
   time (`write()`), keeping the rest as it is on disk.
 - `public/backend.js`: the only file that knows which back end is there. `window.__TAURI__`
-  present: Tauri commands; otherwise `fetch` to the Node server. New back-end calls go here,
-  with both implementations.
+  present: Tauri commands; a loopback hostname: `fetch` to the Node server; anything else: the
+  hosted version. New back-end calls go here, with all the implementations that can have them.
+- `public/web-backend.js`: the hosted back end. Sources and settings in `localStorage`, notes
+  from `raw.githubusercontent.com` (or the API with a token), the list of notes from the git
+  trees API. It also registers `sw.js` and adds the manifest link, so the local versions never
+  have a service worker. `public/sw.js`: keeps the app and opened notes for offline use and
+  answers `gh-asset?...` (images of private repositories, as images only). A file added to
+  `public/` must be added to `FILES` in `sw.js`, and to `STATIC` in `server/index.js` if the
+  local page loads it. All URLs in the page are relative, so the site works below a sub-path.
+- `public/github-url.js`: `parseGithubUrl`, pure, used by `server/github.js` and
+  `web-backend.js`. `github.rs` has the same rules; the tests in `test/github.test.js` and in
+  `github.rs` use the same lists of good and bad addresses.
+- `server/github.js`: `download`, `update`, `discard`, the token file, and `git()` (timeout,
+  own process group, token through the environment).
 - `server/index.js`: routes (`/api/roots`, `/api/browse`, `/api/tree`, `/api/doc`, `/asset`,
-  `/api/watch`), `/api/doc` returns the Markdown source, static files from an explicit allow-list (`STATIC`), security headers.
+  `/api/watch`, `/api/github`, `/api/github/update`, `/api/github/token`), `/api/doc` returns the Markdown source, static files from an explicit allow-list (`STATIC`), security headers.
 - `src-tauri/src/lib.rs`: the desktop twin of `server/index.js`. Commands `list_roots`,
-  `add_root`, `remove_root`, `tree`, `read_doc`, `watch_doc`, `pick_folder`, `open_external`,
-  `set_fullscreen`; the `mdr://` protocol serves images; a `doc-changed` event replaces SSE.
+  `add_root`, `add_file`, `add_github`, `update_github`, `github_token_status`,
+  `set_github_token`, `clear_github_token`, `remove_root`, `tree`, `read_doc`, `watch_doc`,
+  `pick_folder`, `pick_file`, `open_external`, `set_fullscreen` (`git` runs through
+  `blocking()`, off the async workers, with the store unlocked); the `mdr://` protocol serves images; a `doc-changed` event replaces SSE.
 - `src-tauri/src/roots.rs`: the desktop twin of `server/roots.js` (same config file and format;
   folder ids differ between the two back ends, so a `?root=` link is not portable).
 - `public/study.css`: the look of the note. A port of the stylesheet behind the study PDFs
@@ -106,5 +142,10 @@ file busy".
   instead of `--virtual-time-budget`, which never finishes.
 - Printing: `Page.printToPDF` through the Chrome DevTools protocol (plain `--print-to-pdf`
   prints before the note is rendered). The page margins are painted by `@page` margin boxes.
+- Hosted version: serve `public/` with `python3 -m http.server 4801 --bind 127.0.0.1` and open
+  it in Chrome under a non-loopback name, with
+  `--host-resolver-rules="MAP mdr.test 127.0.0.1"` and
+  `--unsafely-treat-insecure-origin-as-secure=http://mdr.test:4801` (a service worker needs a
+  secure origin). On `localhost` the page would talk to the Node server instead.
 - Front-end behaviour (clicks, panels, full screen) is not covered by tests. Say so when it was
   not tried in a browser.

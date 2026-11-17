@@ -1,8 +1,9 @@
 # md-reader
 
 Read Markdown notes with the look of a typeset study PDF, without building the PDF. You choose
-which folders the app may read, and it opens `.md` files only. It runs as a desktop app (Tauri)
-or in the browser on localhost; both show the same front end.
+what the app may read (folders, single files, GitHub repositories), and it opens `.md` files
+only. It runs as a desktop app (Tauri), in the browser on localhost, or as a hosted page that
+installs as a PWA; all three show the same front end.
 
 ## Run in the browser
 
@@ -29,14 +30,44 @@ The release build writes the program to `src-tauri/target/release/md-reader` and
 `src-tauri/target/release/bundle/deb/md-reader_0.1.0_amd64.deb` (about 2 MB). Install it with
 `sudo apt install ./src-tauri/target/release/bundle/deb/md-reader_0.1.0_amd64.deb`.
 
-The desktop app and the browser version share the folder list.
+The desktop app and the browser version share the list of sources.
 
 ## Use
 
-1. Click **Add folder**. The desktop app opens the system's folder dialog. In the browser,
-   browse to a folder (or paste its path and press Go), then **Add this folder**. Its `.md` files appear in the list on the left, sub-folders included.
+1. Click **Add…** and pick a kind of source. Any mix of them can be in the list at once.
+
+   | Source | What is added |
+   |---|---|
+   | Folder on this computer | All its `.md` files, sub-folders included |
+   | One file on this computer | Only that `.md` file; the rest of its folder stays closed |
+   | From GitHub | A repository, a folder in it, or one `.md` file, downloaded to read |
+
+   For a folder or file, the desktop app opens the system's dialog; in the browser, browse to
+   it or paste its path and press Go.
 2. Click a note to read it.
-3. Remove a folder with the **×** next to its name. The files stay on disk.
+3. Remove a source with the **×** next to its name. Local files stay on disk; for a GitHub
+   source the downloaded copy is deleted and the repository is not touched.
+
+### GitHub sources
+
+Paste an address in **Add… → From GitHub**. Needs `git` (2.27 or newer) on the machine.
+
+| Address | Adds |
+|---|---|
+| `https://github.com/owner/repo` or `owner/repo` | The whole repository, default branch |
+| `https://github.com/owner/repo/tree/main/notes` | The folder `notes` on branch `main` |
+| `https://github.com/owner/repo/blob/main/notes/a.md` | That one file |
+
+- Only what is asked for is downloaded (a shallow, sparse clone), into
+  `~/.local/share/md-reader/repos/`. The notes are then readable offline.
+- **↻** on the entry updates the copy and lists the notes that are new, changed or removed.
+- The copy is read-only from the app's side: md-reader never commits or pushes. A branch name
+  with a `/` in it cannot be given in an address.
+- **Private repositories**: paste a GitHub token in the same dialog and press **Save token**.
+  A fine-grained token with read-only "Contents" access to the repositories is enough. It is
+  saved in `~/.config/md-reader/github-token`, readable by your user only. The app can replace
+  or forget it but never shows it again, and hands it to `git` for one command at a time: it is
+  not written into the copy or its settings. Without a saved token, `git`'s own sign-in is used.
 
 | Control | What it does |
 |---|---|
@@ -54,20 +85,42 @@ desktop app, in your browser).
 
 ## What the app can read
 
-- Nothing until a folder is added. The list is saved in `~/.config/md-reader/config.json`
-  (override with the `MD_READER_CONFIG` environment variable).
+- Nothing until a source is added. The list is saved in `~/.config/md-reader/config.json`
+  (override with the `MD_READER_CONFIG` environment variable; downloads from GitHub then go
+  next to that file instead).
 - Documents: `.md` only.
 - Images linked from a note (`.svg .png .jpg .jpeg .gif .webp`), and only from inside an added
   folder.
-- Paths with `..` and symlinks that lead outside an added folder are refused.
+- A single file: that file only, plus the images in its own folder or below. A file that sits
+  directly in the home folder or at the top of the disk shows no images.
+- Paths with `..` and symlinks that lead outside an added folder are refused. A GitHub source
+  never reads outside its downloaded copy, whatever links the repository holds.
 - Raw HTML inside a note is shown as text, not run.
 - Browser version: the server listens on `127.0.0.1` only and refuses requests that come from
   other sites.
 - Desktop app: the page can call only the app's own commands; it has no general file access.
 
+## Hosted version (PWA)
+
+`public/` is also a complete static site. Served from any address that is not this computer,
+the page runs without a server: sources are GitHub repositories only, read through GitHub's API,
+and the page installs as an app on a phone or tablet.
+
+- **Publish**: copy the `public/` folder to any static HTTPS host (GitHub Pages, Cloudflare
+  Pages, Netlify). Nothing to build. It works below a sub-path too.
+- **Offline**: the app itself and every note and image already opened are kept on the device.
+- **Private repositories**: the same token field. In this version the token is kept in the
+  browser's storage on that device and sent to `api.github.com` only; anyone who can use that
+  browser profile can use it, so give it read-only access to the few repositories you need.
+- Without a token GitHub allows 60 list requests an hour per address (adding a source and ↻
+  each use one or two). Opening notes does not count.
+- Forgetting the token, or removing the last source of a repository, also deletes the notes
+  kept from it for offline reading.
+- Not there: local folders and files, reloading when a file changes (use ↻).
+
 ## The look
 
-The ⚙ button opens **Fonts and colours**: three looks (Study, Plain white, Dark), the fonts of
+The ⚙ button opens **Fonts and colours**: three looks (Study, Plain white, Dark with true black for OLED screens), the fonts of
 the text, headings and code, the text size, and four colours (paper, text, headings, accent).
 The choice is saved with the folder list and shared by the browser version and the desktop app.
 
@@ -92,13 +145,17 @@ remembered, and switching keeps the place being read.
 | `public/render.js` | Markdown to HTML, in the page |
 | `public/pages.js` | Pages view: cuts the rendered note into Letter pages |
 | `public/settings.js` | Fonts and colours: the looks, the font lists, checking of stored values |
-| `public/backend.js` | The one place that talks to the server or to the desktop app |
+| `public/backend.js` | The one place that talks to the server, the desktop app or GitHub |
+| `public/web-backend.js`, `sw.js`, `manifest.webmanifest`, `icons/` | Hosted version: GitHub reader, offline cache, install data |
+| `public/github-url.js` | Reads a GitHub address (shared by the server and the hosted version) |
 | `public/vendor/` | Browser builds of markdown-it and highlight.js (`npm run vendor` refreshes them) |
 | `server/index.js` | Browser version: HTTP server, routes, request checks |
-| `server/roots.js` | Browser version: folder list and the path guard |
+| `server/roots.js` | Browser version: list of sources and the path guard |
+| `server/github.js` | Browser version: download and update with `git`, the saved token |
 | `src-tauri/src/lib.rs` | Desktop app: commands, image protocol, file watching |
-| `src-tauri/src/roots.rs` | Desktop app: folder list and the path guard, with its tests |
-| `test/` | Tests for the Node path guard and the renderer |
+| `src-tauri/src/roots.rs` | Desktop app: list of sources and the path guard, with its tests |
+| `src-tauri/src/github.rs` | Desktop app: download and update with `git`, the saved token |
+| `test/` | Tests for the Node path guard, the GitHub code, the hosted guard, the settings and the renderer |
 | `ROADMAP.md` | Planned work |
 
 ## Test
@@ -106,10 +163,11 @@ remembered, and switching keeps the place being read.
 ```sh
 npm install                      # once, for the renderer tests
 npm test                         # Node path guard and renderer
-(cd src-tauri && cargo test)     # Rust path guard
+(cd src-tauri && cargo test)     # Rust path guard and GitHub code
+# A real download from GitHub through the Rust code (needs the network):
+(cd src-tauri && XDG_DATA_HOME=/some/tmp cargo test -- --ignored)
 ```
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md): single files and GitHub
-folders or files as sources, and a hosted PWA version.
+See [ROADMAP.md](ROADMAP.md): publishing the hosted version, and packages for macOS and Windows.

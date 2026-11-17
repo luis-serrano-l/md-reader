@@ -18,6 +18,9 @@ const STATIC = {
   '/study.css': ['study.css', 'text/css; charset=utf-8'],
   '/render.js': ['render.js', 'text/javascript; charset=utf-8'],
   '/backend.js': ['backend.js', 'text/javascript; charset=utf-8'],
+  // Imported by backend.js; only used by the hosted version.
+  '/web-backend.js': ['web-backend.js', 'text/javascript; charset=utf-8'],
+  '/github-url.js': ['github-url.js', 'text/javascript; charset=utf-8'],
   '/settings.js': ['settings.js', 'text/javascript; charset=utf-8'],
   '/pages.js': ['pages.js', 'text/javascript; charset=utf-8'],
   '/vendor/markdown-it.min.js': ['vendor/markdown-it.min.js', 'text/javascript; charset=utf-8'],
