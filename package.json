@@ -2,6 +2,7 @@
   "name": "md-reader",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Read Markdown notes with the study-PDF look, from folders you choose. Opens .md files only.",
   "type": "module",
   "engines": {

@@ -5,6 +5,33 @@ what the app may read (folders, single files, GitHub repositories), and it opens
 only. It runs as a desktop app (Tauri), in the browser on localhost, or as a hosted page that
 installs as a PWA; all three show the same front end.
 
+| Version | Where it runs | What it can read | Start |
+|---|---|---|---|
+| Hosted (PWA) | Any browser, phone or tablet | GitHub repositories | Open <https://luis-serrano-l.github.io/md-reader/> |
+| Browser | This computer, on localhost | Local folders and files, GitHub | `npm start` |
+| Desktop app | Linux (Tauri) | Local folders and files, GitHub | `npm run desktop` |
+
+Contents: [iPad or phone](#on-an-ipad-or-phone) · [Browser](#run-in-the-browser) ·
+[Desktop](#run-as-a-desktop-app) · [Use](#use) · [GitHub sources](#github-sources) ·
+[What the app can read](#what-the-app-can-read) · [Hosted version](#hosted-version-pwa) ·
+[The look](#the-look) · [Layout](#layout) · [Test](#test) · [License](#license)
+
+## On an iPad or phone
+
+Nothing to install from a store, nothing to pay.
+
+1. Put the notes in a GitHub repository (public or private).
+2. Open <https://luis-serrano-l.github.io/md-reader/> in Safari (iPad, iPhone) or Chrome
+   (Android).
+3. Safari: **Share → Add to Home Screen**. Chrome: **⋮ → Install app**. Open the app from its
+   icon from then on; a plain Safari tab can lose its saved notes after a week without use.
+4. **Add… → From GitHub**, paste the address of the repository, a folder or one `.md` file.
+5. Private repository: paste a token in the same dialog and press **Save token** first. Make
+   it at GitHub → Settings → Developer settings → Fine-grained tokens, with access to that one
+   repository and the permission **Contents: Read-only**.
+
+Notes that were opened once can be read again without a network. **↻** fetches new versions.
+
 ## Run in the browser
 
 Needs Node 20 or newer. Nothing to install: the server uses only Node's own modules.
@@ -106,8 +133,13 @@ desktop app, in your browser).
 the page runs without a server: sources are GitHub repositories only, read through GitHub's API,
 and the page installs as an app on a phone or tablet.
 
-- **Publish**: copy the `public/` folder to any static HTTPS host (GitHub Pages, Cloudflare
-  Pages, Netlify). Nothing to build. It works below a sub-path too.
+- **Published** at <https://luis-serrano-l.github.io/md-reader/> by
+  `.github/workflows/pages.yml`, which uploads `public/` on every push to `main`.
+- **Your own copy**: fork the repository and turn on Pages (Settings → Pages → Source: GitHub
+  Actions), or copy `public/` to any static HTTPS host. Nothing to build. It works below a
+  sub-path too.
+- **What leaves the device**: requests to GitHub for the repositories you add, and nothing
+  else. The site has no server of its own, no account and no tracking.
 - **Offline**: the app itself and every note and image already opened are kept on the device.
 - **Private repositories**: the same token field. In this version the token is kept in the
   browser's storage on that device and sent to `api.github.com` only; anyone who can use that
@@ -156,7 +188,9 @@ remembered, and switching keeps the place being read.
 | `src-tauri/src/roots.rs` | Desktop app: list of sources and the path guard, with its tests |
 | `src-tauri/src/github.rs` | Desktop app: download and update with `git`, the saved token |
 | `test/` | Tests for the Node path guard, the GitHub code, the hosted guard, the settings and the renderer |
+| `.github/workflows/pages.yml` | Publishes `public/` to GitHub Pages |
 | `ROADMAP.md` | Planned work |
+| `CLAUDE.md` | Rules and map of the code for contributors (human or AI) |
 
 ## Test
 
@@ -170,4 +204,10 @@ npm test                         # Node path guard and renderer
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md): publishing the hosted version, and packages for macOS and Windows.
+See [ROADMAP.md](ROADMAP.md): sign-in for the hosted version, and packages for macOS and
+Windows.
+
+## License
+
+[MIT](LICENSE). The libraries in `public/vendor/` keep their own licences:
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

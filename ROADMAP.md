@@ -4,14 +4,12 @@ Built so far: the browser version (localhost), the desktop app (Tauri, never Ele
 fonts and colours panel, printing to paper or PDF, continuous view and pages view, the four
 kinds of source side by side (local folder, local file, GitHub folder, GitHub file) with Update
 and a saved token for private repositories, and the hosted version as a static, installable
-page (PWA).
+page (PWA), published with GitHub Pages at <https://luis-serrano-l.github.io/md-reader/>.
 
 ## Still open
 
-**Publish the hosted version.** The page is ready (`public/` is the site) but is not online.
-To decide: the host (GitHub Pages needs a public repository or a paid plan, since this one is
-private; Cloudflare Pages and Netlify publish from a private one) and the address. Then try on
-a phone: installing, a private repository with a token, reading offline.
+**Try the hosted version on a phone or tablet**: installing, a private repository with a
+token, reading offline. So far it was tried in desktop Chrome only.
 
 **Sign-in for the hosted version instead of a pasted token.** GitHub's sign-in for a page
 without a server needs a GitHub App and a small token-exchange service. Google Apps Script

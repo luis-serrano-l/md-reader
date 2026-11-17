@@ -1,6 +1,7 @@
 [package]
 name = "md-reader"
 version = "0.1.0"
+license = "MIT"
 description = "Read Markdown notes with the study-PDF look, from folders you choose"
 edition = "2021"
 rust-version = "1.77"

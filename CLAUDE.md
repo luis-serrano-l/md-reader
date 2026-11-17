@@ -104,6 +104,8 @@ file busy".
   answers `gh-asset?...` (images of private repositories, as images only). A file added to
   `public/` must be added to `FILES` in `sw.js`, and to `STATIC` in `server/index.js` if the
   local page loads it. All URLs in the page are relative, so the site works below a sub-path.
+- `.github/workflows/pages.yml`: publishes `public/` to GitHub Pages on a push to `main`.
+  The repository is public: never commit a token, a personal address or a private path.
 - `public/github-url.js`: `parseGithubUrl`, pure, used by `server/github.js` and
   `web-backend.js`. `github.rs` has the same rules; the tests in `test/github.test.js` and in
   `github.rs` use the same lists of good and bad addresses.
