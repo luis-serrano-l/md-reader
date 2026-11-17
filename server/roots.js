@@ -144,6 +144,7 @@ export class RootStore {
     const real = realpathOr(wanted, 404, 'That file does not exist.');
     if (!isFile(real)) throw new GuardError(400, 'That path is not a file.');
     if (!DOC_EXTS.has(path.extname(real).toLowerCase())) throw new GuardError(403, 'Only Markdown (.md) files can be added.');
+    if (github) requireInsideCopy(real, github);
     return this.put({ id: rootId(real), path: real, kind: 'file', ...(github ? { github } : {}) });
   }
 
@@ -152,6 +153,7 @@ export class RootStore {
     this.load();
     const real = realpathOr(dir, 404, 'That folder does not exist.');
     if (!isDirectory(real)) throw new GuardError(400, 'That path is a file, not a folder.');
+    requireInsideCopy(real, github);
     return this.put({ id: rootId(real), path: real, kind: 'folder', github });
   }
 
@@ -185,6 +187,8 @@ export class RootStore {
     if (!exts.has(path.extname(rel).toLowerCase())) throw new GuardError(403, 'This file type cannot be opened.');
     const single = root.kind === 'file';
     const sourceReal = realpathOr(root.path, 404, single ? 'The file no longer exists.' : 'The folder no longer exists.');
+    // A repository may hold links; a downloaded source never reads outside its own copy.
+    if (root.github) requireInsideCopy(sourceReal, root.github);
     const rootReal = single ? path.dirname(sourceReal) : sourceReal;
     // A file kept directly in the home folder or at the top of the disk must not open every
     // image below it: for such a file only the note itself is served.
@@ -289,6 +293,17 @@ function walk(abs, rel, depth, budget) {
     }
   }
   return [...dirs.sort(byName), ...files.sort(byName)];
+}
+
+// A source downloaded from GitHub must be, links resolved, inside the folder of its download.
+function requireInsideCopy(real, github) {
+  let copy = null;
+  try {
+    copy = fs.realpathSync(String(github?.dir));
+  } catch {
+    /* refused below */
+  }
+  if (!copy || !isInside(copy, real)) throw new GuardError(403, 'This source leads outside its downloaded copy.');
 }
 
 // True for a folder that is too much to open as a side effect of adding one file in it: the

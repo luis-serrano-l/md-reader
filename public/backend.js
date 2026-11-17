@@ -4,6 +4,10 @@
 //   listRoots()                -> [{ id, path, name, kind: 'folder' | 'file', github, missing }]
 //   addRoot(path)              -> root (a folder)
 //   addFile(path)              -> root (one .md file)
+//   addGithub(url)             -> root (a folder or one .md file of a GitHub repository, downloaded)
+//   updateGithub(id)           -> { added, changed, removed } (.md paths)
+//   githubToken()              -> true when a token is saved; it can never be read back
+//   saveGithubToken(token), clearGithubToken()
 //   removeRoot(id)
 //   tree(rootId)               -> { nodes, truncated }
 //   readDoc(rootId, path)      -> { path, source }
@@ -32,6 +36,11 @@ function httpBackend() {
     listRoots: async () => (await api('/api/roots')).roots,
     addRoot: async (path) => (await send('/api/roots', 'POST', { path })).root,
     addFile: async (path) => (await send('/api/roots', 'POST', { path, kind: 'file' })).root,
+    addGithub: async (url) => (await send('/api/github', 'POST', { url })).root,
+    updateGithub: (root) => send('/api/github/update', 'POST', { root }),
+    githubToken: async () => (await api('/api/github/token')).saved,
+    saveGithubToken: (token) => send('/api/github/token', 'PUT', { token }),
+    clearGithubToken: () => api('/api/github/token', { method: 'DELETE' }),
     removeRoot: (id) => api(`/api/roots/${enc(id)}`, { method: 'DELETE' }),
     tree: (root) => api(`/api/tree?root=${enc(root)}`),
     readDoc: (root, path) => api(`/api/doc?root=${enc(root)}&path=${enc(path)}`),
@@ -70,6 +79,11 @@ function tauriBackend({ core, event }) {
     listRoots: () => call('list_roots'),
     addRoot: (path) => call('add_root', { path }),
     addFile: (path) => call('add_file', { path }),
+    addGithub: (url) => call('add_github', { url }),
+    updateGithub: (root) => call('update_github', { root }),
+    githubToken: () => call('github_token_status'),
+    saveGithubToken: (token) => call('set_github_token', { token }),
+    clearGithubToken: () => call('clear_github_token'),
     removeRoot: (id) => call('remove_root', { id }),
     tree: (root) => call('tree', { root }),
     readDoc: (root, path) => call('read_doc', { root, path }),

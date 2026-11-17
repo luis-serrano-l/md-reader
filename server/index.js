@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RootStore, GuardError, browse, DOC_EXTS, IMAGE_EXTS } from './roots.js';
+import * as github from './github.js';
 
 const HOST = '127.0.0.1';
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -140,8 +141,45 @@ async function route(req, res, url, store) {
   }
 
   if (pathname.startsWith('/api/roots/') && method === 'DELETE') {
-    store.remove(decodeURIComponent(pathname.slice('/api/roots/'.length)));
+    // A source from GitHub takes its downloaded copy with it.
+    github.discard(store.remove(decodeURIComponent(pathname.slice('/api/roots/'.length))));
     return sendJson(res, 200, { ok: true });
+  }
+
+  // A folder or one .md file of a GitHub repository: downloaded, then added like a local one.
+  if (pathname === '/api/github' && method === 'POST') {
+    const body = await readJsonBody(req);
+    const spec = github.parseGithubUrl(body.url);
+    const got = await github.download(spec, store.file);
+    let root;
+    try {
+      root = spec.kind === 'file' ? store.addFile(got.target, got.github) : store.addGithubFolder(got.target, got.github);
+    } catch (err) {
+      github.discard({ github: got.github });
+      throw err;
+    }
+    return sendJson(res, 200, { root: store.list().find((r) => r.id === root.id) });
+  }
+
+  if (pathname === '/api/github/update' && method === 'POST') {
+    const body = await readJsonBody(req);
+    const root = store.get(body.root);
+    if (!root) throw new GuardError(404, 'Unknown folder.');
+    return sendJson(res, 200, await github.update(root, store.file));
+  }
+
+  // The token is write-only: the page can save or forget it and ask whether one is saved.
+  if (pathname === '/api/github/token' && method === 'GET') return sendJson(res, 200, { saved: github.hasToken(store.file) });
+
+  if (pathname === '/api/github/token' && method === 'PUT') {
+    const body = await readJsonBody(req);
+    github.saveToken(store.file, body.token);
+    return sendJson(res, 200, { saved: true });
+  }
+
+  if (pathname === '/api/github/token' && method === 'DELETE') {
+    github.clearToken(store.file);
+    return sendJson(res, 200, { saved: false });
   }
 
   if (pathname === '/api/settings' && method === 'GET') return sendJson(res, 200, { settings: store.getSettings() });

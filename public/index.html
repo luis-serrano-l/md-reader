@@ -55,6 +55,29 @@
     </form>
   </dialog>
 
+  <dialog class="picker" id="mdr-github" aria-labelledby="mdr-github-title">
+    <form class="picker-form" id="mdr-github-form">
+      <h2 id="mdr-github-title">Add from GitHub</h2>
+      <p class="picker-help">Paste the address of a repository, of a folder in it, or of one .md file. md-reader downloads a copy to read and never changes the repository.</p>
+      <div class="picker-path">
+        <input id="mdr-github-url" type="text" aria-label="GitHub address" placeholder="https://github.com/owner/repository/tree/main/notes" autocomplete="off" spellcheck="false">
+      </div>
+      <h3>Private repositories</h3>
+      <p class="picker-help" id="mdr-github-token-state"></p>
+      <div class="picker-path">
+        <input id="mdr-github-token" type="password" aria-label="GitHub token" placeholder="GitHub token" autocomplete="off" spellcheck="false">
+        <button type="button" class="btn" id="mdr-github-token-save">Save token</button>
+        <button type="button" class="btn" id="mdr-github-token-clear">Forget</button>
+      </div>
+      <p class="picker-error" id="mdr-github-error" role="alert"></p>
+      <div class="picker-actions">
+        <span class="picker-count" id="mdr-github-busy"></span>
+        <button type="button" class="btn" id="mdr-github-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="mdr-github-add">Download and add</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog class="picker" id="mdr-picker" aria-labelledby="mdr-picker-title">
     <form method="dialog" class="picker-form" id="mdr-picker-form">
       <h2 id="mdr-picker-title">Add a folder</h2>

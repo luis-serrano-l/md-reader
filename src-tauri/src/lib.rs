@@ -2,6 +2,7 @@
 //! (`public/`); these commands replace the Node server. Nothing here reads a file except through
 //! `RootStore::resolve_inside`.
 
+mod github;
 mod roots;
 
 use notify::event::{AccessKind, AccessMode};
@@ -65,13 +66,69 @@ fn add_file(state: State<'_, AppState>, path: String) -> CommandResult<RootInfo>
 
 #[tauri::command]
 fn remove_root(state: State<'_, AppState>, id: String) -> CommandResult<()> {
-    state.store.lock().unwrap().remove(&id).map_err(message)?;
+    let removed = state.store.lock().unwrap().remove(&id).map_err(message)?;
+    github::discard(&removed); // a source from GitHub takes its downloaded copy with it
     // Stop watching a note of the folder that was just removed.
     let mut watched = state.watcher.lock().unwrap();
     if watched.as_ref().is_some_and(|w| w.root == id) {
         *watched = None;
     }
     Ok(())
+}
+
+/// A folder or one `.md` file of a GitHub repository: downloaded, then added like a local one.
+/// The store is not locked while `git` runs.
+#[tauri::command]
+async fn add_github(state: State<'_, AppState>, url: String) -> CommandResult<RootInfo> {
+    let spec = github::parse_github_url(&url).map_err(message)?;
+    let config = state.store.lock().unwrap().config_file();
+    let wanted = spec.clone();
+    let got = blocking(move || github::download(&wanted, &config)).await?;
+    let mut store = state.store.lock().unwrap();
+    let kept = got.github.clone();
+    let added = match spec.kind {
+        roots::SourceKind::File => store.add_file(&got.target.to_string_lossy(), Some(got.github)),
+        roots::SourceKind::Folder => store.add_github_folder(&got.target, got.github),
+    };
+    if added.is_err() {
+        github::discard_copy(&kept);
+    }
+    added.map_err(message)
+}
+
+#[tauri::command]
+async fn update_github(state: State<'_, AppState>, root: String) -> CommandResult<github::Changes> {
+    let (source, config) = {
+        let store = state.store.lock().unwrap();
+        (store.get(&root).ok_or("Unknown folder.")?, store.config_file())
+    };
+    blocking(move || github::update(&source, &config)).await
+}
+
+/// Runs `git` work on a thread of its own, so a slow download holds up nothing else.
+async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, GuardError> + Send + 'static) -> CommandResult<T> {
+    match tauri::async_runtime::spawn_blocking(work).await {
+        Ok(result) => result.map_err(message),
+        Err(_) => Err("The download was interrupted.".into()),
+    }
+}
+
+/// The token is write-only: the page can save or forget it and ask whether one is saved.
+#[tauri::command]
+fn github_token_status(state: State<'_, AppState>) -> bool {
+    github::has_token(&state.store.lock().unwrap().config_file())
+}
+
+#[tauri::command]
+fn set_github_token(state: State<'_, AppState>, token: String) -> CommandResult<bool> {
+    github::save_token(&state.store.lock().unwrap().config_file(), &token).map_err(message)?;
+    Ok(true)
+}
+
+#[tauri::command]
+fn clear_github_token(state: State<'_, AppState>) -> bool {
+    github::clear_token(&state.store.lock().unwrap().config_file());
+    false
 }
 
 #[tauri::command]
@@ -238,6 +295,11 @@ pub fn run() {
             list_roots,
             add_root,
             add_file,
+            add_github,
+            update_github,
+            github_token_status,
+            set_github_token,
+            clear_github_token,
             remove_root,
             tree,
             get_settings,

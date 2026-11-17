@@ -168,6 +168,14 @@ fn home_dir() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
 }
 
+/// A source downloaded from GitHub must be, links resolved, inside the folder of its download.
+fn require_inside_copy(real: &Path, github: &Github) -> Result<(), GuardError> {
+    match fs::canonicalize(&github.dir) {
+        Ok(copy) if real.starts_with(&copy) => Ok(()),
+        _ => fail(Kind::Forbidden, "This source leads outside its downloaded copy."),
+    }
+}
+
 /// True for a folder that is too much to open as a side effect of adding one file in it: the
 /// top of the disk and the home folder.
 fn too_broad(dir: &Path, home: &Path) -> bool {
@@ -329,6 +337,9 @@ impl RootStore {
         if !has_ext(&real, DOC_EXTS) {
             return fail(Kind::Forbidden, "Only Markdown (.md) files can be added.");
         }
+        if let Some(github) = &github {
+            require_inside_copy(&real, github)?;
+        }
         self.put(Root { id: root_id(&real), path: real, kind: SourceKind::File, github })
     }
 
@@ -341,6 +352,7 @@ impl RootStore {
         if !real.is_dir() {
             return fail(Kind::BadRequest, "That path is a file, not a folder.");
         }
+        require_inside_copy(&real, &github)?;
         self.put(Root { id: root_id(&real), path: real, kind: SourceKind::Folder, github: Some(github) })
     }
 
@@ -354,6 +366,10 @@ impl RootStore {
             return fail(Kind::BadRequest, "The folder list could not be saved.");
         }
         Ok(Self::info(self.roots.last().expect("just pushed")))
+    }
+
+    pub fn config_file(&self) -> PathBuf {
+        self.file.clone()
     }
 
     pub fn get(&self, id: &str) -> Option<Root> {
@@ -393,6 +409,10 @@ impl RootStore {
         let Ok(source_real) = fs::canonicalize(&root.path) else {
             return fail(Kind::NotFound, if single { "The file no longer exists." } else { "The folder no longer exists." });
         };
+        // A repository may hold links; a downloaded source never reads outside its own copy.
+        if let Some(github) = &root.github {
+            require_inside_copy(&source_real, github)?;
+        }
         let root_real = match (single, source_real.parent()) {
             (true, Some(parent)) => parent.to_path_buf(),
             (true, None) => return fail(Kind::NotFound, "The file no longer exists."),
@@ -727,6 +747,23 @@ mod tests {
         assert!(too_broad(Path::new("/"), &f.root));
         assert!(too_broad(&f.root, &f.root));
         assert!(!too_broad(&f.root.join("sub"), &f.root));
+    }
+
+    #[test]
+    fn a_source_from_github_never_leads_outside_its_downloaded_copy() {
+        let mut f = fixture();
+        let github = |dir: &Path| Github { repo: "octo/notes".into(), git_ref: "main".into(), sub: "sub".into(), dir: dir.to_string_lossy().into_owned() };
+        // Links committed in a repository: a folder and a file that point out of the copy.
+        let _ = symlink(&f.base, f.root.join("up")); // the fixture may have it
+        assert_eq!(f.store.add_github_folder(&f.root.join("up"), github(&f.root)).unwrap_err().kind, Kind::Forbidden);
+        assert_eq!(f.store.add_file(f.root.join("escape.md").to_str().unwrap(), Some(github(&f.root))).unwrap_err().kind, Kind::Forbidden);
+        assert_eq!(f.store.add_github_folder(&f.root.join("sub"), github(&f.base.join("nowhere"))).unwrap_err().kind, Kind::Forbidden);
+        let id = f.store.add_github_folder(&f.root.join("sub"), github(&f.root)).unwrap().id;
+        assert_eq!(f.store.resolve_inside(&id, "c.md", DOC_EXTS).unwrap().rel, "c.md");
+        // An update turns the folder into a link: nothing is read through it.
+        fs::remove_dir_all(f.root.join("sub")).unwrap();
+        symlink(&f.base, f.root.join("sub")).unwrap();
+        assert_eq!(kind(f.store.resolve_inside(&id, "secret.md", DOC_EXTS)), Kind::Forbidden);
     }
 
     #[test]

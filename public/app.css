@@ -142,6 +142,10 @@ details[open] > summary::before { content: "▾"; }
 .source-choices span { color: var(--ui-muted); font-size: 12.5px; }
 .root-kind { margin-left: 6px; padding: 0 5px; border: 1px solid var(--ui-line); border-radius: 4px; color: var(--ui-muted);
              font-size: 10.5px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.05em; vertical-align: 1px; }
+.root-update { right: 30px; font-size: 13px; }
+.root-update:hover { color: var(--ui-accent); }
+.root-update[disabled] { visibility: visible; opacity: 0.5; cursor: progress; }
+#mdr-github h3 { margin: 14px 0 4px; font-size: 13px; color: var(--ui-head); }
 .picker-error { margin: 0; color: var(--danger); min-height: 1.2em; }
 .picker-actions { display: flex; align-items: center; gap: 8px; }
 .picker-count { flex: 1; color: var(--ui-muted); }

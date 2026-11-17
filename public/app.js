@@ -84,6 +84,17 @@ async function loadRoots() {
       remove.setAttribute('aria-label', `Remove ${root.name}`);
       remove.addEventListener('click', () => removeRoot(root));
       const wrap = el('div', { className: 'root' }, [details, remove]);
+      if (root.github) {
+        const update = el('button', {
+          type: 'button',
+          className: 'icon-btn root-remove root-update',
+          textContent: '↻',
+          title: `Update ${root.name} from GitHub`,
+        });
+        update.setAttribute('aria-label', `Update ${root.name} from GitHub`);
+        update.addEventListener('click', () => updateRoot(root, update));
+        wrap.append(update);
+      }
       wrap.dataset.root = root.id;
       root.el = wrap;
       try {
@@ -671,6 +682,108 @@ document.addEventListener('keydown', (event) => {
   } else if (event.key === 'Escape') backend.exitFullscreen?.().catch(() => {}); // a browser leaves by itself
 });
 
+// ---------- Sources from GitHub ----------
+
+const names = (list) => (list.length > 8 ? `${list.slice(0, 8).join(', ')} and ${list.length - 8} more` : list.join(', '));
+
+// Brings the downloaded copy up to date and says which notes changed.
+async function updateRoot(root, button) {
+  button.disabled = true;
+  try {
+    const { added, changed, removed } = await backend.updateGithub(root.id);
+    const parts = [
+      added.length && `New: ${names(added)}.`,
+      changed.length && `Changed: ${names(changed)}.`,
+      removed.length && `Removed: ${names(removed)}.`,
+    ].filter(Boolean);
+    if (parts.length) {
+      await loadRoots();
+      const open = state.current?.root === root.id ? state.current.path : null;
+      // A note that is gone says so in place of its text. A changed one is reloaded by the
+      // watcher where there is one; the hosted version has none.
+      if (open && removed.includes(open)) await openDoc(root.id, open).catch(() => {});
+      else if (open && changed.includes(open) && backend.kind === 'web') await openDoc(root.id, open, { keepScroll: true }).catch(() => {});
+    }
+    await ask(parts.length ? `${root.name} was updated` : `${root.name} is up to date`, parts.join(' ') || 'No note changed on GitHub.');
+  } catch (err) {
+    await ask(`${root.name} could not be updated`, err.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+const githubDialog = $('mdr-github');
+const githubError = $('mdr-github-error');
+
+async function showTokenState() {
+  let saved = false;
+  try {
+    saved = await backend.githubToken();
+  } catch {
+    /* shown as not saved */
+  }
+  $('mdr-github-token-state').textContent = saved
+    ? 'A token is saved on this computer and is used for every download. It cannot be read back, only replaced or forgotten.'
+    : 'No token is saved. Public repositories need none. For a private one, paste a token that may read it (a fine-grained token with read-only "Contents" access is enough). It is kept in a file only your user can read.';
+  $('mdr-github-token-clear').hidden = !saved;
+}
+
+async function openGithub() {
+  githubError.textContent = '';
+  $('mdr-github-busy').textContent = '';
+  $('mdr-github-token').value = '';
+  githubDialog.showModal();
+  $('mdr-github-url').focus();
+  await showTokenState();
+}
+
+async function saveToken() {
+  githubError.textContent = '';
+  const field = $('mdr-github-token');
+  if (!field.value.trim()) return;
+  try {
+    await backend.saveGithubToken(field.value);
+    field.value = '';
+  } catch (err) {
+    githubError.textContent = err.message;
+  }
+  await showTokenState();
+}
+
+async function addGithub() {
+  const url = $('mdr-github-url').value.trim();
+  if (!url || $('mdr-github-add').disabled) return;
+  githubError.textContent = '';
+  if ($('mdr-github-token').value.trim()) await saveToken(); // a pasted token is meant to be used
+  if (githubError.textContent) return;
+  $('mdr-github-add').disabled = true;
+  $('mdr-github-busy').textContent = 'Downloading…';
+  try {
+    const root = await backend.addGithub(url);
+    await loadRoots();
+    $('mdr-github-url').value = '';
+    githubDialog.close();
+    if (root.kind === 'file') await openDoc(root.id, root.name, { push: true }).catch(() => {});
+    else if (!state.current) showWelcome();
+  } catch (err) {
+    githubError.textContent = err.message;
+  } finally {
+    $('mdr-github-add').disabled = false;
+    $('mdr-github-busy').textContent = '';
+  }
+}
+
+$('mdr-github-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  addGithub();
+});
+$('mdr-github-cancel').addEventListener('click', () => githubDialog.close());
+$('mdr-github-token-save').addEventListener('click', saveToken);
+$('mdr-github-token-clear').addEventListener('click', async () => {
+  await backend.clearGithubToken().catch(() => {});
+  await showTokenState();
+});
+
 // ---------- Adding a source ----------
 
 const picker = $('mdr-picker');
@@ -688,6 +801,7 @@ const isMd = (path) => /\.md$/i.test(path);
 const SOURCES = [
   { title: 'Folder on this computer', text: 'All the .md files in it, sub-folders included.', add: () => pickLocal(false) },
   { title: 'One file on this computer', text: 'Only that .md file. The rest of its folder stays closed.', add: () => pickLocal(true) },
+  { title: 'From GitHub', text: 'A repository, a folder in it or one .md file, downloaded to read. Private ones with a token.', add: () => openGithub() },
 ];
 
 function buildSourceChoices() {

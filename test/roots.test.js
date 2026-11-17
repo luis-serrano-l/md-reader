@@ -144,6 +144,22 @@ test('a file in the home folder or at the top of the disk opens no images', () =
   }
 });
 
+test('a source from GitHub never leads outside its downloaded copy', () => {
+  const { base, root, store } = fixture();
+  const github = { repo: 'octo/notes', ref: 'main', sub: 'sub', dir: root };
+  // Links committed in a repository: a folder and a file that point out of the copy.
+  assert.throws(() => store.addGithubFolder(path.join(root, 'up'), github), status(403));
+  assert.throws(() => store.addFile(path.join(root, 'escape.md'), github), status(403));
+  assert.throws(() => store.addGithubFolder(path.join(root, 'sub'), { ...github, dir: path.join(base, 'nowhere') }), status(403));
+  const { id } = store.addGithubFolder(path.join(root, 'sub'), github);
+  assert.equal(store.resolveInside(id, 'c.md', DOC_EXTS).rel, 'c.md');
+  assert.deepEqual(store.list().find((r) => r.id === id).github, { repo: 'octo/notes', ref: 'main', sub: 'sub' });
+  // An update turns the folder into a link: nothing is read through it.
+  fs.rmSync(path.join(root, 'sub'), { recursive: true });
+  fs.symlinkSync(base, path.join(root, 'sub'));
+  assert.throws(() => store.resolveInside(id, 'secret.md', DOC_EXTS), status(403));
+});
+
 test('addFile refuses folders, other file types and missing files', () => {
   const { root, store } = fixture();
   assert.throws(() => store.addFile(root), status(400));
