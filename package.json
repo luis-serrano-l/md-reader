@@ -1,0 +1,17 @@
+{
+  "name": "md-reader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read Markdown notes with the study-PDF look, from folders you choose. Opens .md files only.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "highlight.js": "^11.10.0",
+    "markdown-it": "^14.1.0",
+    "markdown-it-task-lists": "^2.1.1"
+  }
+}

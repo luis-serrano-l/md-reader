@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>md-reader</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/study.css">
+</head>
+<body>
+  <div class="app" id="mdr-app">
+    <aside class="sidebar" id="mdr-sidebar" aria-label="Folders">
+      <div class="sidebar-head">
+        <span class="brand">md-reader</span>
+        <button type="button" class="btn primary" id="mdr-add">Add folder</button>
+      </div>
+      <nav class="roots" id="mdr-roots"></nav>
+    </aside>
+
+    <div class="main">
+      <header class="bar">
+        <button type="button" class="icon-btn" id="mdr-toggle-sidebar" title="Show or hide the folder list" aria-label="Show or hide the folder list">☰</button>
+        <div class="crumb" id="mdr-crumb"></div>
+        <div class="zoom" role="group" aria-label="Zoom">
+          <button type="button" class="icon-btn" id="mdr-zoom-out" title="Smaller" aria-label="Smaller">−</button>
+          <button type="button" class="zoom-value" id="mdr-zoom-reset" title="Back to 100%">100%</button>
+          <button type="button" class="icon-btn" id="mdr-zoom-in" title="Larger" aria-label="Larger">+</button>
+        </div>
+        <button type="button" class="icon-btn" id="mdr-fullscreen" title="Full screen on or off (F). Esc also leaves." aria-label="Full screen">⛶</button>
+        <button type="button" class="icon-btn" id="mdr-toggle-outline" title="Show or hide the outline" aria-label="Show or hide the outline">≡</button>
+      </header>
+      <div class="desk" id="mdr-desk" tabindex="-1">
+        <article class="sheet" id="mdr-sheet" hidden></article>
+        <div class="notice" id="mdr-notice"></div>
+      </div>
+    </div>
+
+    <aside class="outline" id="mdr-outline" aria-label="Outline"></aside>
+  </div>
+
+  <dialog class="picker" id="mdr-picker" aria-labelledby="mdr-picker-title">
+    <form method="dialog" class="picker-form" id="mdr-picker-form">
+      <h2 id="mdr-picker-title">Add a folder</h2>
+      <p class="picker-help">md-reader can open only the Markdown (.md) files inside the folders you add here.</p>
+      <div class="picker-path">
+        <button type="button" class="btn" id="mdr-picker-up" title="Go to the parent folder">Up</button>
+        <input type="text" id="mdr-picker-input" spellcheck="false" autocomplete="off" aria-label="Folder path">
+        <button type="button" class="btn" id="mdr-picker-go">Go</button>
+      </div>
+      <ul class="picker-list" id="mdr-picker-list"></ul>
+      <p class="picker-error" id="mdr-picker-error" role="alert"></p>
+      <div class="picker-actions">
+        <span class="picker-count" id="mdr-picker-count"></span>
+        <button type="button" class="btn" id="mdr-picker-cancel">Cancel</button>
+        <button type="button" class="btn primary" id="mdr-picker-add">Add this folder</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
