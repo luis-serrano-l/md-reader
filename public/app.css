@@ -137,6 +137,17 @@ details[open] > summary::before { content: "▾"; }
 .root-update { right: 30px; font-size: 13px; }
 .root-update:hover { color: var(--ui-accent); }
 .root-update[disabled] { visibility: visible; opacity: 0.5; cursor: progress; }
+.picker-step { display: flex; flex-direction: column; gap: 10px; }
+.picker-help.ok { color: var(--ui-accent); }
+.picker-help code { font: 12.5px "Fira Code", "DejaVu Sans Mono", monospace; }
+.folder-choices { list-style: none; margin: 0; padding: 4px; max-height: min(46vh, 380px); overflow: auto;
+                  border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-field); }
+.folder-choices label { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px; cursor: pointer; }
+.folder-choices label:hover { background: var(--ui-bg-2); }
+.folder-choices input { flex: none; margin: 0; accent-color: var(--ui-accent); }
+.folder-choices .folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ui-ink); }
+.folder-choices .folder-count { flex: none; color: var(--ui-muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.folder-choices li:first-child .folder-name { font-weight: 600; color: var(--ui-head); }
 #mdr-github h3 { margin: 14px 0 4px; font-size: 13px; color: var(--ui-head); }
 .picker-error { margin: 0; color: var(--danger); min-height: 1.2em; }
 .picker-actions { display: flex; align-items: center; gap: 8px; }

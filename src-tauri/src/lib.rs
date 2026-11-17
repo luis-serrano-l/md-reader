@@ -79,8 +79,11 @@ fn remove_root(state: State<'_, AppState>, id: String) -> CommandResult<()> {
 /// A folder or one `.md` file of a GitHub repository: downloaded, then added like a local one.
 /// The store is not locked while `git` runs.
 #[tauri::command]
-async fn add_github(state: State<'_, AppState>, url: String) -> CommandResult<RootInfo> {
-    let spec = github::parse_github_url(&url).map_err(message)?;
+async fn add_github(state: State<'_, AppState>, url: String, sub: Option<String>) -> CommandResult<RootInfo> {
+    let mut spec = github::parse_github_url(&url).map_err(message)?;
+    if let Some(sub) = sub.filter(|s| !s.is_empty()) {
+        spec = github::with_folder(spec, &sub).map_err(message)?;
+    }
     let config = state.store.lock().unwrap().config_file();
     let wanted = spec.clone();
     let got = blocking(move || github::download(&wanted, &config)).await?;
@@ -94,6 +97,14 @@ async fn add_github(state: State<'_, AppState>, url: String) -> CommandResult<Ro
         github::discard_copy(&kept);
     }
     added.map_err(message)
+}
+
+/// The folders of a repository that hold notes, to choose from before anything is downloaded.
+#[tauri::command]
+async fn github_folders(state: State<'_, AppState>, url: String) -> CommandResult<github::Listing> {
+    let spec = github::parse_github_url(&url).map_err(message)?;
+    let config = state.store.lock().unwrap().config_file();
+    blocking(move || github::folders(&spec, &config)).await
 }
 
 #[tauri::command]
@@ -296,6 +307,7 @@ pub fn run() {
             add_root,
             add_file,
             add_github,
+            github_folders,
             update_github,
             github_token_status,
             set_github_token,

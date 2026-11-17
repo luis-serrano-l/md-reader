@@ -7,7 +7,7 @@
 // (localStorage), the notes already opened (service worker cache, for reading offline), and the
 // GitHub token for private repositories (its own cache entry, which sw.js also reads so it can
 // fetch private images). The token is sent to api.github.com only.
-import { parseGithubUrl } from './github-url.js';
+import { isFolderPath, parseGithubUrl } from './github-url.js';
 
 const API = 'https://api.github.com';
 const RAW = 'https://raw.githubusercontent.com';
@@ -160,9 +160,60 @@ function resolveInside(source, rel, pattern) {
 
 const TOO_LARGE = 'This repository is too large for GitHub to list in one answer. Use the desktop app for it.';
 
+// The list of all files of a repository. The last one is kept for a minute, so choosing
+// folders and then adding them asks GitHub once (requests without a token are few).
+let recent = null;
+async function fetchTree(repo, ref, reuse = false, byDefault = false) {
+  if (reuse && recent && recent.repo === repo && recent.ref === ref && Date.now() - recent.at < 60000) return recent.data;
+  const data = await (await api(`/repos/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`)).json();
+  const kept = { repo, ref, data, byDefault, at: Date.now() };
+  recent = kept;
+  setTimeout(() => {
+    if (recent === kept) recent = null; // a large list is not held for longer than it is of use
+  }, 60000);
+  return data;
+}
+
+async function branchOf(spec, repo) {
+  if (spec.ref) return spec.ref;
+  if (recent && recent.repo === repo && recent.byDefault && Date.now() - recent.at < 60000) return recent.ref;
+  const ref = (await (await api(`/repos/${repo}`)).json()).default_branch;
+  if (typeof ref !== 'string' || !ref) throw new Error('The repository has no branch to read.');
+  return ref;
+}
+
+const MAX_FOLDERS = 1000;
+
+// Counts the notes below every folder, from the paths of all files in a repository. Hidden
+// folders and node_modules are left out, as in the list of notes.
+function folderCounts(paths) {
+  const counts = new Map();
+  let total = 0;
+  for (const path of paths) {
+    const parts = path.split('/');
+    if (!DOC.test(path) || parts.some(SKIP)) continue;
+    total++;
+    for (let depth = 1; depth < parts.length; depth++) {
+      const dir = parts.slice(0, depth).join('/');
+      if (!isFolderPath(dir)) break;
+      counts.set(dir, (counts.get(dir) || 0) + 1);
+    }
+  }
+  const order = (a, b) => {
+    const [x, y] = [a.path.split('/'), b.path.split('/')];
+    for (let i = 0; i < Math.min(x.length, y.length); i++) {
+      const by = x[i].localeCompare(y[i], undefined, { numeric: true, sensitivity: 'base' }) || (x[i] < y[i] ? -1 : x[i] > y[i] ? 1 : 0);
+      if (by) return by;
+    }
+    return x.length - y.length;
+  };
+  const folders = [...counts].map(([path, count]) => ({ path, count })).sort(order);
+  return { total, folders: folders.slice(0, MAX_FOLDERS), truncated: folders.length > MAX_FOLDERS };
+}
+
 // The .md files of a source, as { "path inside the source": "git sha" }.
-async function fetchFiles(source) {
-  const data = await (await api(`/repos/${source.repo}/git/trees/${encodeURIComponent(source.ref)}?recursive=1`)).json();
+async function fetchFiles(source, reuse = false) {
+  const data = await fetchTree(source.repo, source.ref, reuse);
   const entries = Array.isArray(data.tree) ? data.tree : [];
   if (source.kind === 'file') {
     const entry = entries.find((e) => e.type === 'blob' && e.path === source.sub);
@@ -271,14 +322,29 @@ export function webBackend() {
       load();
       return sources.map(info);
     },
-    async addGithub(url) {
+    // The folders of a repository that hold notes, to choose from. `direct` means the address
+    // already names one folder or one file.
+    async githubFolders(url) {
       const spec = parseGithubUrl(url);
       const repo = `${spec.owner}/${spec.repo}`;
-      const ref = spec.ref || (await (await api(`/repos/${repo}`)).json()).default_branch;
-      if (typeof ref !== 'string' || !ref) throw new Error('The repository has no branch to read.');
+      if (spec.sub || spec.kind === 'file') return { direct: true, repo, ref: spec.ref, total: 0, folders: [], truncated: false };
+      const ref = await branchOf(spec, repo);
+      const data = await fetchTree(repo, ref, false, !spec.ref);
+      const counted = folderCounts((Array.isArray(data.tree) ? data.tree : []).filter((e) => e.type === 'blob').map((e) => e.path));
+      return { direct: false, repo, ref, ...counted, truncated: counted.truncated || !!data.truncated };
+    },
+    // `sub` narrows the address of a whole repository to one folder chosen from githubFolders().
+    async addGithub(url, sub = '') {
+      const spec = parseGithubUrl(url);
+      if (sub) {
+        if (spec.sub || spec.kind !== 'folder' || !isFolderPath(sub)) throw new Error('That folder cannot be added.');
+        spec.sub = sub;
+      }
+      const repo = `${spec.owner}/${spec.repo}`;
+      const ref = await branchOf(spec, repo);
       const source = { repo, ref, sub: spec.sub, kind: spec.kind };
       source.id = sourceId(source);
-      Object.assign(source, await fetchFiles(source));
+      Object.assign(source, await fetchFiles(source, true));
       load();
       sources = [...sources.filter((s) => s.id !== source.id), source];
       save();
@@ -301,14 +367,23 @@ export function webBackend() {
     githubToken: async () => (await readToken()) !== null,
     async saveGithubToken(token) {
       if (typeof token !== 'string' || !TOKEN.test(token.trim())) throw new Error('That does not look like a GitHub token.');
-      await (await privateStore()).put(tokenUrl(), new Response(token.trim()));
+      const store = await privateStore();
+      // Asked once, so a miscopied or expired token is refused now and not at the first download.
+      const check = await fetch(`${API}/user`, {
+        headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token.trim()}` },
+        cache: 'no-store',
+      }).catch(() => null);
+      if (check && check.status === 401) throw new Error('GitHub does not accept that token. Check that all of it was copied and that it has not expired.');
+      await store.put(tokenUrl(), new Response(token.trim()));
       tokenSaved = true;
       tokenKnown = token.trim();
+      recent = null;
     },
     async clearGithubToken() {
       await (await privateStore()).delete(tokenUrl());
       tokenSaved = false;
       tokenKnown = null;
+      recent = null;
       await forgetKept(); // what was read with the token does not stay behind
     },
     async removeRoot(id) {
@@ -354,4 +429,4 @@ export function webBackend() {
 }
 
 // For the tests: the guard and the tree builder, which need no browser.
-export const internals = { resolveInside, nodes, sourceId };
+export const internals = { resolveInside, nodes, sourceId, folderCounts };

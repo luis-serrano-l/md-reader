@@ -27,6 +27,9 @@ desktop program, not a second back end.
 
 - A private repository with a real token, in the desktop app.
 - The web version with no network at all.
-- Adding from GitHub by typing in the desktop window (the same Rust code is covered by a test
-  that downloads a public repository).
+- Adding from GitHub by typing in the desktop window, the folder list included (the same Rust
+  code is covered by a test that lists and downloads a public repository; the dialog was
+  tried in Chrome).
+- The desktop app cannot ask GitHub whether a token is accepted when it is saved (it has no
+  HTTP library); a wrong token shows at the first download.
 - Reloading a note in pages view when its file changes, and printing from the desktop window.

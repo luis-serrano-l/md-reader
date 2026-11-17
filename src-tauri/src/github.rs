@@ -141,6 +141,20 @@ pub fn parse_github_url(input: &str) -> Result<Spec, GuardError> {
     Ok(Spec { owner, repo, git_ref, sub, kind: SourceKind::File })
 }
 
+/// The same repository and branch as `spec`, narrowed to one of its folders (chosen from the
+/// list that `folders` gave). The folder is checked like the path of an address.
+pub fn with_folder(mut spec: Spec, sub: &str) -> Result<Spec, GuardError> {
+    if spec.kind != SourceKind::Folder || !spec.sub.is_empty() || !is_folder_path(sub) {
+        return fail(Kind::BadRequest, "That folder cannot be added.");
+    }
+    spec.sub = sub.to_string();
+    Ok(spec)
+}
+
+fn is_folder_path(sub: &str) -> bool {
+    sub.len() <= 1000 && sub.split('/').all(is_segment)
+}
+
 // ---------- Where things are kept ----------
 
 /// With `MD_READER_CONFIG` (a scratch folder list for testing) the downloads go next to that
@@ -173,6 +187,13 @@ fn clone_dir(spec: &Spec) -> PathBuf {
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
     repos_dir().join(&spec.owner).join(&spec.repo).join(format!("{:010x}", hash & 0xff_ffff_ffff))
+}
+
+/// A short-lived folder beside the clones of a repository, for reading its list of files.
+fn listing_dir(spec: &Spec) -> PathBuf {
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    repos_dir().join(&spec.owner).join(&spec.repo).join(format!("list-{}-{n}", std::process::id()))
 }
 
 /// True for a folder that this module made: three levels below `repos/`.
@@ -426,6 +447,131 @@ pub fn download(spec: &Spec, config_file: &Path) -> Result<Download, GuardError>
     result
 }
 
+/// One folder of a repository and how many notes are in it, sub-folders included.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct FolderCount {
+    pub path: String,
+    pub count: usize,
+}
+
+/// What the page shows to choose folders from. `direct` means the address already names one
+/// folder or one file, so there is nothing to choose.
+#[derive(Debug, Serialize)]
+pub struct Listing {
+    pub direct: bool,
+    pub repo: String,
+    #[serde(rename = "ref")]
+    pub git_ref: String,
+    pub total: usize,
+    pub folders: Vec<FolderCount>,
+    pub truncated: bool,
+}
+
+const MAX_FOLDERS: usize = 1000;
+
+/// Counts the notes below every folder, from the paths of all files in a repository. Hidden
+/// folders and `node_modules` are left out, as in the list of notes; so is a folder whose name
+/// could not be downloaded on its own.
+pub fn folder_counts<'a>(paths: impl Iterator<Item = &'a str>) -> (usize, Vec<FolderCount>, bool) {
+    let mut counts: std::collections::BTreeMap<Vec<&str>, usize> = std::collections::BTreeMap::new();
+    let mut total = 0;
+    for path in paths.filter(|p| is_md(p)) {
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.iter().any(|p| p.starts_with('.') || *p == "node_modules") {
+            continue;
+        }
+        total += 1;
+        for depth in 1..parts.len() {
+            if !is_segment(parts[depth - 1]) {
+                break;
+            }
+            *counts.entry(parts[..depth].to_vec()).or_default() += 1;
+        }
+    }
+    let truncated = counts.len() > MAX_FOLDERS;
+    let mut listed: Vec<(Vec<&str>, usize)> = counts.into_iter().collect();
+    listed.sort_by(|(a, _), (b, _)| {
+        let by_name = a.iter().zip(b.iter()).map(|(x, y)| natural_order(x, y)).find(|o| o.is_ne());
+        by_name.unwrap_or_else(|| a.len().cmp(&b.len()))
+    });
+    let folders = listed.into_iter().take(MAX_FOLDERS).map(|(parts, count)| FolderCount { path: parts.join("/"), count }).collect();
+    (total, folders, truncated)
+}
+
+/// Order of two folder names as a reader expects it: letters without regard to case, runs of
+/// digits by their value ("week 2" before "week 10"). The web version lists them the same way.
+fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let (x, y): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let (mut i, mut j) = (0, 0);
+    while i < x.len() && j < y.len() {
+        if x[i].is_ascii_digit() && y[j].is_ascii_digit() {
+            let run = |text: &[char], from: usize| text[from..].iter().take_while(|c| c.is_ascii_digit()).count();
+            let (n, m) = (run(&x, i), run(&y, j));
+            let digits = |text: &[char], from: usize, len: usize| text[from..from + len].iter().skip_while(|c| **c == '0').collect::<String>();
+            let (p, q) = (digits(&x, i, n), digits(&y, j, m));
+            let by = p.len().cmp(&q.len()).then_with(|| p.cmp(&q));
+            if by != Ordering::Equal {
+                return by;
+            }
+            i += n;
+            j += m;
+        } else {
+            let by = x[i].to_lowercase().cmp(y[j].to_lowercase());
+            if by != Ordering::Equal {
+                return by;
+            }
+            i += 1;
+            j += 1;
+        }
+    }
+    (x.len() - i).cmp(&(y.len() - j)).then_with(|| a.cmp(b))
+}
+
+/// The folders of a repository that hold notes. Only the list of file names is downloaded
+/// (a clone without files), into a folder that is removed again.
+pub fn folders(spec: &Spec, config_file: &Path) -> Result<Listing, GuardError> {
+    let repo = format!("{}/{}", spec.owner, spec.repo);
+    if spec.kind == SourceKind::File || !spec.sub.is_empty() {
+        return Ok(Listing { direct: true, repo, git_ref: spec.git_ref.clone(), total: 0, folders: Vec::new(), truncated: false });
+    }
+    let token = read_token(config_file);
+    let token = token.as_deref();
+    let dir = listing_dir(spec);
+    // What a listing left behind when the app was closed in the middle of it.
+    let ours = format!("list-{}-", std::process::id());
+    for entry in dir.parent().and_then(|p| fs::read_dir(p).ok()).into_iter().flatten().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with("list-") && !name.starts_with(&ours) {
+            remove_dir(&entry.path());
+        }
+    }
+    if dir.parent().map(fs::create_dir_all).and_then(Result::ok).is_none() {
+        return fail(Kind::BadRequest, "The folder for downloads could not be made.");
+    }
+    let dir_text = dir.to_string_lossy().into_owned();
+    let url = format!("https://github.com/{}/{}.git", spec.owner, spec.repo);
+    let run = || -> Result<Listing, GuardError> {
+        let mut args = vec!["clone", "--quiet", "--depth", "1", "--single-branch", "--no-tags", "--filter=blob:none", "--no-checkout"];
+        if !spec.git_ref.is_empty() {
+            args.extend(["--branch", &spec.git_ref]);
+        }
+        args.extend(["--", &url, &dir_text]);
+        git(&args, None, token)?;
+        let names = git(&["ls-tree", "-r", "--name-only", "-z", "HEAD"], Some(&dir), token)?;
+        let git_ref = if spec.git_ref.is_empty() {
+            git(&["rev-parse", "--abbrev-ref", "HEAD"], Some(&dir), None)?.trim().to_string()
+        } else {
+            spec.git_ref.clone()
+        };
+        let (total, folders, truncated) = folder_counts(names.split('\0').filter(|n| !n.is_empty()));
+        Ok(Listing { direct: false, repo: repo.clone(), git_ref, total, folders, truncated })
+    };
+    let result = run();
+    remove_dir(&dir);
+    result
+}
+
 /// The notes that an update brought, with paths relative to the source.
 #[derive(Debug, Default, Serialize)]
 pub struct Changes {
@@ -546,6 +692,28 @@ mod tests {
     }
 
     #[test]
+    fn folders_are_counted_with_their_sub_folders() {
+        let paths = ["week 10/a.md", "week 2/a.md", "Zeta/a.md", "README.md", "docs/a.md", "docs/deep/b.md", "docs/deep/c.MD", "docs/pic.svg", "src/main.rs",
+            ".github/x.md", "node_modules/p/README.md", "odd[1]/in/d.md", "notes/-x/e.md"];
+        let (total, folders, truncated) = folder_counts(paths.into_iter());
+        assert_eq!(total, 9);
+        assert!(!truncated);
+        let got: Vec<(&str, usize)> = folders.iter().map(|f| (f.path.as_str(), f.count)).collect();
+        assert_eq!(got, [("docs", 3), ("docs/deep", 2), ("notes", 1), ("week 2", 1), ("week 10", 1), ("Zeta", 1)]);
+    }
+
+    #[test]
+    fn a_chosen_folder_is_checked_like_an_address() {
+        let whole = || spec("octo", "notes", "", "", SourceKind::Folder);
+        assert_eq!(with_folder(whole(), "docs/week 1").unwrap().sub, "docs/week 1");
+        for bad in ["", "..", "docs/..", "docs//a", "/docs", "docs/", "-x", "a/-x", "a*", "a\\b", "a\nb"] {
+            assert!(with_folder(whole(), bad).is_err(), "{bad:?}");
+        }
+        assert!(with_folder(spec("octo", "notes", "main", "docs", SourceKind::Folder), "more").is_err());
+        assert!(with_folder(spec("octo", "notes", "main", "a.md", SourceKind::File), "more").is_err());
+    }
+
+    #[test]
     fn the_download_folder_keeps_its_name_across_versions() {
         let dir = clone_dir(&spec("octo", "notes", "main", "docs", SourceKind::Folder));
         assert_eq!(dir, repos_dir().join("octo").join("notes").join("22f63808a1"));
@@ -608,6 +776,16 @@ mod tests {
         assert!(got.target.is_file());
         assert!(!Path::new(&got.github.dir).join("docs").exists(), "only the top of the repository is checked out");
         discard_copy(&got.github);
+
+        let whole = parse_github_url("markdown-it/markdown-it").unwrap();
+        let listing = folders(&whole, &config).unwrap();
+        assert_eq!(listing.git_ref, "master");
+        assert!(listing.folders.iter().any(|f| f.path == "docs" && f.count >= 5), "{:?}", listing.folders);
+        assert!(listing.total > listing.folders[0].count);
+        let left: Vec<_> = fs::read_dir(repos_dir().join("markdown-it").join("markdown-it")).map(|d| d.flatten().collect()).unwrap_or_default();
+        assert!(left.iter().all(|e| !e.file_name().to_string_lossy().starts_with("list-")), "the listing clone is removed");
+        let chosen = with_folder(whole, "docs").unwrap();
+        assert!(download(&chosen, &config).unwrap().target.join("architecture.md").is_file());
 
         let missing = parse_github_url("https://github.com/markdown-it/markdown-it/tree/master/nofolder").unwrap();
         assert_eq!(download(&missing, &config).err().unwrap().kind, Kind::NotFound);

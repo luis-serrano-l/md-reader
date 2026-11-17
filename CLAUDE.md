@@ -43,8 +43,10 @@ file busy".
   exception to "no path from request input": the download folder
   `repos/<owner>/<repo>/<key>` is built from an address that `parse_github_url` has checked part
   by part. Keep it so: no `..`, no leading `-`, nothing `git` could read as an option; always
-  `--` before addresses and paths. Only folders exactly three levels below `repos/` are ever
-  deleted. The app only clones, fetches and resets: never a commit or a push.
+  `--` before addresses and paths. A folder chosen in the dialog (`sub` of `add_github`) is
+  checked by the same segment rule (`with_folder`; `isFolderPath` in the web version). Only
+  folders exactly three levels below `repos/` are ever deleted (the short-lived `list-…` clone
+  that `folders` reads file names from is one of them). The app only clones, fetches and resets: never a commit or a push.
 - **The token is write-only.** Saved in `github-token` (mode 0600) next to the config file;
   no route or command returns it, no error message contains it, and it reaches `git` only
   through `GIT_CONFIG_*` environment variables of one command (never the URL, never
@@ -104,7 +106,7 @@ file busy".
   the same rules; the tests in `test/github.test.js` and in
   `github.rs` use the same lists of good and bad addresses.
 - `src-tauri/src/lib.rs`: the desktop back end. Commands `list_roots`,
-  `add_root`, `add_file`, `add_github`, `update_github`, `github_token_status`,
+  `add_root`, `add_file`, `github_folders`, `add_github`, `update_github`, `github_token_status`,
   `set_github_token`, `clear_github_token`, `remove_root`, `tree`, `read_doc`, `watch_doc`,
   `pick_folder`, `pick_file`, `open_external`, `set_fullscreen` (`git` runs through
   `blocking()`, off the async workers, with the store unlocked); the `mdr://` protocol serves images; a `doc-changed` event tells the page that the open note changed on disk.

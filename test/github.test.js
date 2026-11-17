@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseGithubUrl } from '../public/github-url.js';
+import { isFolderPath, parseGithubUrl } from '../public/github-url.js';
 
 const status = (code) => (err) => err.status === code;
 
@@ -50,4 +50,11 @@ test('refuses other hosts, other file types and unsafe paths', () => {
   }
   assert.throws(() => parseGithubUrl('https://github.com/octo/notes/blob/main/docs/a.pdf'), status(403));
   assert.throws(() => parseGithubUrl('https://github.com/octo/notes/blob/main'), status(403));
+});
+
+test('a chosen folder is checked like the path of an address', () => {
+  for (const good of ['docs', 'docs/week 1', 'a.b/c_d', 'año 1']) assert.ok(isFolderPath(good), good);
+  for (const bad of ['', '..', 'docs/..', 'docs//a', '/docs', 'docs/', '-x', 'a/-x', 'a*', 'a\\b', 'a\nb', ' a', null, 'x'.repeat(1001)]) {
+    assert.ok(!isFolderPath(bad), String(bad));
+  }
 });

@@ -7,6 +7,11 @@ const REF = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
 // A path segment that is safe as a sparse-checkout folder, as a file name and in a URL.
 const SEGMENT = /^[^/\\\0-\x1f*?[\]!#]+$/;
 
+const okSegment = (part) => part !== '.' && part !== '..' && !part.startsWith('-') && part === part.trim() && SEGMENT.test(part);
+
+// True for the path of a folder inside a repository that may be added on its own.
+export const isFolderPath = (sub) => typeof sub === 'string' && sub.length <= 1000 && sub.split('/').every(okSegment);
+
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const bad = (message) => fail(400, message);
 
@@ -46,7 +51,7 @@ export function parseGithubUrl(input) {
   if (marker === undefined) return { owner, repo, ref: '', sub: '', kind: 'folder' };
   if (marker !== 'tree' && marker !== 'blob') throw bad('Give the address of a repository, of a folder in it, or of a .md file in it.');
   if (!REF.test(ref)) throw bad('The branch name in that address cannot be used.');
-  if (rest.some((part) => part === '.' || part === '..' || part.startsWith('-') || part !== part.trim() || !SEGMENT.test(part))) {
+  if (!rest.every(okSegment)) {
     throw bad('The path in that address cannot be used.');
   }
   const sub = rest.join('/');

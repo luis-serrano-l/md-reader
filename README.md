@@ -24,10 +24,12 @@ Nothing to install from a store, nothing to pay.
    (Android).
 3. Safari: **Share → Add to Home Screen**. Chrome: **⋮ → Install app**. Open the app from its
    icon from then on; a plain Safari tab can lose its saved notes after a week without use.
-4. **Add… → From GitHub**, paste the address of the repository, a folder or one `.md` file.
-5. Private repository: paste a token in the same dialog and press **Save token** first. Make
-   it at GitHub → Settings → Developer settings → Fine-grained tokens, with access to that one
-   repository and the permission **Contents: Read-only**.
+4. **Add… → From GitHub**, type `owner/repository`, press **Next** and tick the folders to
+   add.
+5. Private repositories: paste a token in the same dialog and press **Save token** first. It
+   is saved once and used for every repository added later. Make it at GitHub → Settings →
+   Developer settings → Fine-grained tokens, with access to the repositories to read and the
+   permission **Contents: Read-only**.
 
 Notes that were opened once can be read again without a network. **↻** fetches new versions.
 
@@ -65,21 +67,28 @@ The release build writes the program to `src-tauri/target/release/md-reader` and
 
 ### GitHub sources
 
-Paste an address in **Add… → From GitHub**. Needs `git` (2.27 or newer) on the machine.
+Type an address in **Add… → From GitHub** and press **Next**. The desktop app needs `git`
+(2.27 or newer) on the machine.
 
-| Address | Adds |
+| Address | What happens |
 |---|---|
-| `https://github.com/owner/repo` or `owner/repo` | The whole repository, default branch |
-| `https://github.com/owner/repo/tree/main/notes` | The folder `notes` on branch `main` |
-| `https://github.com/owner/repo/blob/main/notes/a.md` | That one file |
+| `https://github.com/owner/repo` or `owner/repo` | The folders that hold notes are listed, each with its number of notes. Tick the whole repository or any folders |
+| `https://github.com/owner/repo/tree/main` | The same, for branch `main` |
+| `https://github.com/owner/repo/tree/main/notes` | Adds the folder `notes` on branch `main` at once |
+| `https://github.com/owner/repo/blob/main/notes/a.md` | Adds that one file at once |
+
+- Each ticked folder becomes its own entry in the list, with its sub-folders, and is updated
+  or removed on its own. A folder inside a ticked one comes with it.
 
 - Only what is asked for is downloaded (a shallow, sparse clone), into
   `~/.local/share/md-reader/repos/`. The notes are then readable offline.
 - **↻** on the entry updates the copy and lists the notes that are new, changed or removed.
 - The copy is read-only from the app's side: md-reader never commits or pushes. A branch name
   with a `/` in it cannot be given in an address.
-- **Private repositories**: paste a GitHub token in the same dialog and press **Save token**.
-  A fine-grained token with read-only "Contents" access to the repositories is enough. It is
+- **Private repositories**: paste a GitHub token in the same dialog and press **Save token**,
+  once; it is then used for every repository. A fine-grained token with read-only "Contents"
+  access to the repositories is enough. The web version asks GitHub at once whether the token
+  is accepted. It is
   saved in `~/.config/md-reader/github-token`, readable by your user only. The app can replace
   or forget it but never shows it again, and hands it to `git` for one command at a time: it is
   not written into the copy or its settings. Without a saved token, `git`'s own sign-in is used.

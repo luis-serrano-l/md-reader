@@ -59,22 +59,29 @@
   <dialog class="picker" id="mdr-github" aria-labelledby="mdr-github-title">
     <form class="picker-form" id="mdr-github-form">
       <h2 id="mdr-github-title">Add from GitHub</h2>
-      <p class="picker-help">Paste the address of a repository, of a folder in it, or of one .md file. md-reader downloads a copy to read and never changes the repository.</p>
-      <div class="picker-path">
-        <input id="mdr-github-url" type="text" aria-label="GitHub address" placeholder="https://github.com/owner/repository/tree/main/notes" autocomplete="off" spellcheck="false">
+      <div class="picker-step" id="mdr-github-step-address">
+        <p class="picker-help">Paste the address of a repository; <code>owner/repository</code> is enough. You then choose which of its folders to add. The address of one folder or one .md file adds just that. md-reader only reads the repository and never changes it.</p>
+        <div class="picker-path">
+          <input id="mdr-github-url" type="text" aria-label="GitHub address" placeholder="owner/repository" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <h3>Private repositories</h3>
+        <p class="picker-help" id="mdr-github-token-state"></p>
+        <div class="picker-path">
+          <input id="mdr-github-token" type="password" aria-label="GitHub token" placeholder="GitHub token" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn" id="mdr-github-token-save">Save token</button>
+          <button type="button" class="btn" id="mdr-github-token-clear">Forget</button>
+        </div>
       </div>
-      <h3>Private repositories</h3>
-      <p class="picker-help" id="mdr-github-token-state"></p>
-      <div class="picker-path">
-        <input id="mdr-github-token" type="password" aria-label="GitHub token" placeholder="GitHub token" autocomplete="off" spellcheck="false">
-        <button type="button" class="btn" id="mdr-github-token-save">Save token</button>
-        <button type="button" class="btn" id="mdr-github-token-clear">Forget</button>
+      <div class="picker-step" id="mdr-github-step-folders" hidden>
+        <p class="picker-help" id="mdr-github-repo"></p>
+        <ul class="folder-choices" id="mdr-github-folders" aria-label="Folders to add"></ul>
       </div>
       <p class="picker-error" id="mdr-github-error" role="alert"></p>
       <div class="picker-actions">
         <span class="picker-count" id="mdr-github-busy"></span>
         <button type="button" class="btn" id="mdr-github-cancel">Cancel</button>
-        <button type="submit" class="btn primary" id="mdr-github-add">Download and add</button>
+        <button type="button" class="btn" id="mdr-github-back" hidden>Back</button>
+        <button type="submit" class="btn primary" id="mdr-github-add">Next</button>
       </div>
     </form>
   </dialog>

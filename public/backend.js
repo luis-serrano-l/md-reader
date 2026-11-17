@@ -5,7 +5,11 @@
 //   listRoots()                -> [{ id, path, name, kind: 'folder' | 'file', github, missing }]
 //   addRoot(path)              -> root (a folder)
 //   addFile(path)              -> root (one .md file)
-//   addGithub(url)             -> root (a folder or one .md file of a GitHub repository, downloaded)
+//   githubFolders(url)         -> { direct, repo, ref, total, folders: [{ path, count }], truncated }: the
+//                                 folders of a repository that hold notes; direct = the address
+//                                 already names one folder or file
+//   addGithub(url, sub?)       -> root (a folder or one .md file of a GitHub repository, downloaded);
+//                                 `sub` narrows a whole repository to one folder from githubFolders()
 //   updateGithub(id)           -> { added, changed, removed } (.md paths)
 //   githubToken()              -> true when a token is saved; it can never be read back
 //   saveGithubToken(token), clearGithubToken()
@@ -35,7 +39,8 @@ function tauriBackend({ core, event }) {
     listRoots: () => call('list_roots'),
     addRoot: (path) => call('add_root', { path }),
     addFile: (path) => call('add_file', { path }),
-    addGithub: (url) => call('add_github', { url }),
+    addGithub: (url, sub = '') => call('add_github', { url, sub }),
+    githubFolders: (url) => call('github_folders', { url }),
     updateGithub: (root) => call('update_github', { root }),
     githubToken: () => call('github_token_status'),
     saveGithubToken: (token) => call('set_github_token', { token }),

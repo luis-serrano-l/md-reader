@@ -62,7 +62,8 @@ async function fromGithub(request, key) {
   const cache = await caches.open(NOTES);
   try {
     const res = await fetch(request);
-    if (res.ok) cache.put(key, res.clone());
+    // 'no-store' marks a request that is only a check (of a new token): nothing of it is kept.
+    if (res.ok && request.cache !== 'no-store') cache.put(key, res.clone());
     return res;
   } catch {
     return (await cache.match(key, { ignoreVary: true })) || Response.error();

@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { internals } from '../public/web-backend.js';
 
-const { resolveInside, nodes, sourceId } = internals;
+const { resolveInside, nodes, sourceId, folderCounts } = internals;
 const DOC = /\.md$/i;
 const IMAGE = /\.(svg|png|jpe?g|gif|webp)$/i;
 const folder = { repo: 'octo/notes', ref: 'main', sub: 'docs', kind: 'folder' };
@@ -49,4 +49,21 @@ test('hosted tree: folders first, then files, by name', () => {
   ]);
   assert.notEqual(sourceId(folder), sourceId(file));
   assert.match(sourceId(folder), /^w[0-9a-f]{8}$/);
+});
+
+test('folders to choose from: notes are counted with their sub-folders', () => {
+  const paths = ['README.md', 'docs/a.md', 'docs/deep/b.md', 'docs/deep/c.MD', 'docs/pic.svg', 'src/main.rs',
+    '.github/x.md', 'node_modules/p/README.md', 'odd[1]/in/d.md', 'notes/-x/e.md', 'week 10/a.md', 'week 2/a.md', 'Zeta/a.md'];
+  assert.deepEqual(folderCounts(paths), {
+    total: 9,
+    folders: [
+      { path: 'docs', count: 3 },
+      { path: 'docs/deep', count: 2 },
+      { path: 'notes', count: 1 },
+      { path: 'week 2', count: 1 },
+      { path: 'week 10', count: 1 },
+      { path: 'Zeta', count: 1 },
+    ],
+    truncated: false,
+  });
 });

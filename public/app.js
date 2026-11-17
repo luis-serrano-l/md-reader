@@ -774,14 +774,38 @@ async function showTokenState() {
   } catch {
     /* shown as not saved */
   }
-  $('mdr-github-token-state').textContent = saved
-    ? 'A token is saved on this computer and is used for every download. It cannot be read back, only replaced or forgotten.'
-    : 'No token is saved. Public repositories need none. For a private one, paste a token that may read it (a fine-grained token with read-only "Contents" access is enough). ' + (backend.kind === 'web' ? 'It is kept in this browser, on this device.' : 'It is kept in a file only your user can read.');
+  const where = backend.kind === 'web' ? 'in this browser, on this device' : 'in a file only your user can read';
+  const state = $('mdr-github-token-state');
+  state.textContent = saved
+    ? `✓ A token is saved ${where}, and is used for every repository you add. It cannot be read back, only replaced or forgotten.`
+    : `No token is saved. Public repositories need none. For private ones, paste a token that may read them (a fine-grained token with read-only "Contents" access to those repositories is enough) and save it once: it is kept ${where}.`;
+  state.classList.toggle('ok', saved);
+  $('mdr-github-token').placeholder = saved ? 'A new token, to replace the saved one' : 'GitHub token';
+  $('mdr-github-token-save').textContent = saved ? 'Replace token' : 'Save token';
   $('mdr-github-token-clear').hidden = !saved;
 }
 
-async function openGithub() {
+// The dialog has two steps: the address (and the token), then the folders of that repository.
+const picking = { url: '', picked: new Set(), busy: false };
+
+function showGithubStep(folders) {
+  $('mdr-github-step-address').hidden = folders;
+  $('mdr-github-step-folders').hidden = !folders;
+  $('mdr-github-back').hidden = !folders;
+  $('mdr-github-add').textContent = folders ? 'Add' : 'Next';
   githubError.textContent = '';
+}
+
+// While a listing or a download runs, the dialog can be neither left nor stepped back in.
+function setGithubBusy(busy) {
+  picking.busy = busy;
+  for (const id of ['mdr-github-add', 'mdr-github-back', 'mdr-github-cancel']) $(id).disabled = busy;
+  if (!busy) $('mdr-github-busy').textContent = '';
+}
+
+async function openGithub() {
+  showGithubStep(false);
+  setGithubBusy(false);
   $('mdr-github-busy').textContent = '';
   $('mdr-github-token').value = '';
   githubDialog.showModal();
@@ -789,40 +813,124 @@ async function openGithub() {
   await showTokenState();
 }
 
+// Resolves to whether the token in the field is now saved.
 async function saveToken() {
   githubError.textContent = '';
   const field = $('mdr-github-token');
-  if (!field.value.trim()) return;
+  if (!field.value.trim()) {
+    githubError.textContent = 'Paste a token into the field first.';
+    return false;
+  }
+  const button = $('mdr-github-token-save');
+  button.disabled = true;
   try {
     await backend.saveGithubToken(field.value);
     field.value = '';
+    return true;
   } catch (err) {
-    githubError.textContent = err.message;
+    githubError.textContent = `The token was not saved. ${err.message}`;
+    return false;
+  } finally {
+    button.disabled = false;
+    await showTokenState();
   }
-  await showTokenState();
+}
+
+const noteCount = (n) => (n === 1 ? '1 note' : `${n} notes`);
+// The folders that are ticked, without those inside another ticked one. '' is the whole repository.
+function chosenFolders() {
+  if (picking.picked.has('')) return [''];
+  return [...picking.picked].filter((path) => ![...picking.picked].some((other) => other !== path && path.startsWith(`${other}/`)));
+}
+
+// A folder inside a ticked one is shown ticked and cannot be changed: it comes with its parent.
+function syncFolderChoices() {
+  const chosen = chosenFolders();
+  for (const box of $('mdr-github-folders').querySelectorAll('input')) {
+    const covered = chosen.some((path) => path !== box.value && (path === '' || box.value.startsWith(`${path}/`)));
+    box.checked = covered || picking.picked.has(box.value);
+    box.disabled = covered;
+  }
+  $('mdr-github-add').textContent = chosen.length > 1 ? `Add ${chosen.length} folders` : 'Add';
+  $('mdr-github-add').disabled = chosen.length === 0;
+}
+
+function showFolders(listing) {
+  picking.picked = new Set();
+  $('mdr-github-repo').textContent =
+    `${listing.repo} · ${listing.ref}. Tick what to add; each ticked folder becomes its own source, with its sub-folders.` +
+    (listing.truncated ? ' The repository is large: not every folder is listed, and the counts may be too low.' : '');
+  const rows = [{ path: '', count: listing.total }, ...listing.folders].map(({ path, count }) => {
+    const item = el('li');
+    const label = el('label');
+    const box = el('input');
+    box.type = 'checkbox';
+    box.value = path;
+    box.addEventListener('change', () => {
+      if (box.checked) picking.picked.add(path);
+      else picking.picked.delete(path);
+      syncFolderChoices();
+    });
+    const depth = path ? path.split('/').length : 0;
+    label.style.paddingLeft = `${8 + depth * 18}px`;
+    label.title = path || listing.repo;
+    label.append(
+      box,
+      el('span', { className: 'folder-name', textContent: path ? path.slice(path.lastIndexOf('/') + 1) : 'Whole repository' }),
+      el('span', { className: 'folder-count', textContent: noteCount(count) }),
+    );
+    item.append(label);
+    return item;
+  });
+  $('mdr-github-folders').replaceChildren(...rows);
+  showGithubStep(true);
+  syncFolderChoices();
 }
 
 async function addGithub() {
-  const url = $('mdr-github-url').value.trim();
-  if (!url || $('mdr-github-add').disabled) return;
+  if (picking.busy || $('mdr-github-add').disabled) return;
+  const folders = !$('mdr-github-step-folders').hidden;
+  const url = folders ? picking.url : $('mdr-github-url').value.trim();
+  if (!url) {
+    githubError.textContent = 'Paste the address of a repository first.';
+    return;
+  }
   githubError.textContent = '';
-  if ($('mdr-github-token').value.trim()) await saveToken(); // a pasted token is meant to be used
-  if (githubError.textContent) return;
-  $('mdr-github-add').disabled = true;
-  $('mdr-github-busy').textContent = 'Downloading…';
+  if (!folders && $('mdr-github-token').value.trim() && !(await saveToken())) return; // a pasted token is meant to be used
+  setGithubBusy(true);
+  const busy = $('mdr-github-busy');
+  const added = [];
   try {
-    const root = await backend.addGithub(url);
-    await loadRoots();
+    let subs = folders ? chosenFolders() : null;
+    if (!subs) {
+      busy.textContent = 'Reading the repository…';
+      const listing = await backend.githubFolders(url);
+      if (listing.direct || !listing.folders.length) {
+        if (!listing.direct && !listing.total) throw new Error('That repository has no .md files.');
+        subs = [''];
+      } else {
+        picking.url = url;
+        showFolders(listing);
+        return;
+      }
+    }
+    for (const [i, sub] of subs.entries()) {
+      busy.textContent = subs.length > 1 ? `Downloading ${sub} (${i + 1} of ${subs.length})…` : 'Downloading…';
+      added.push(await backend.addGithub(url, sub));
+      picking.picked.delete(sub); // not added a second time if a later one fails
+    }
     $('mdr-github-url').value = '';
     githubDialog.close();
-    if (root.kind === 'file') await openDoc(root.id, root.name, { push: true }).catch(() => {});
-    else if (!state.current) showWelcome();
   } catch (err) {
-    githubError.textContent = err.message;
+    githubError.textContent = added.length ? `${added.length} added, then: ${err.message}` : err.message;
   } finally {
-    $('mdr-github-add').disabled = false;
-    $('mdr-github-busy').textContent = '';
+    setGithubBusy(false);
+    if (!$('mdr-github-step-folders').hidden) syncFolderChoices();
   }
+  if (!added.length) return;
+  await loadRoots();
+  if (!githubDialog.open && added.length === 1 && added[0].kind === 'file') await openDoc(added[0].id, added[0].name, { push: true }).catch(() => {});
+  else if (!state.current) showWelcome();
 }
 
 $('mdr-github-form').addEventListener('submit', (event) => {
@@ -830,8 +938,18 @@ $('mdr-github-form').addEventListener('submit', (event) => {
   addGithub();
 });
 $('mdr-github-cancel').addEventListener('click', () => githubDialog.close());
+// Esc does not close the dialog in the middle of a download.
+githubDialog.addEventListener('cancel', (event) => {
+  if (picking.busy) event.preventDefault();
+});
+$('mdr-github-back').addEventListener('click', () => {
+  showGithubStep(false);
+  $('mdr-github-add').disabled = false;
+  $('mdr-github-url').focus();
+});
 $('mdr-github-token-save').addEventListener('click', saveToken);
 $('mdr-github-token-clear').addEventListener('click', async () => {
+  githubError.textContent = '';
   await backend.clearGithubToken().catch(() => {});
   await showTokenState();
 });
