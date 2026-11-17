@@ -2,6 +2,10 @@
 
 Not built yet. Listed in the order they were asked for, not in priority order.
 
+Built so far: the browser version (localhost) and the desktop app (Tauri, never Electron).
+Still open for the desktop app: packages for macOS and Windows, and removing the Node server
+once the browser version is no longer wanted.
+
 ## Choose fonts and colours
 
 A settings panel to pick the body, heading and code fonts, the text size, and the paper, text,
@@ -12,22 +16,52 @@ Already prepared: `public/study.css` defines every font and colour once, as CSS 
 on `.sheet` (`--paper`, `--ink`, `--h1`, `--h2`, `--h3`, `--accent`, `--code-bg`, `--font-body`,
 `--font-head`, `--font-mono`, `--size-body`, ...). The panel only has to set those variables.
 
-## Import a folder from a GitHub repository
+## Choose between continuous view and pages view
 
-Give a GitHub URL (a repository, or one folder inside it) and md-reader downloads it and keeps a
-local copy, so the notes are readable offline like any other added folder.
+A switch in the top bar between the two ways of showing a note:
 
-- Stored under the app's own data folder (`~/.local/share/md-reader/repos/<owner>/<repo>`), then
-  added to the folder list with a mark showing it came from GitHub and from which branch.
+- **Continuous** (what exists today): one long sheet, scrolled from top to bottom.
+- **Pages**: the note cut into Letter-size pages like the PDF, with a gap between pages, a page
+  number on each, and "page 3 of 32" in the top bar. Page Up / Page Down move one page at a time.
+
+In pages view a table row, a code block or a diagram with its lead-in paragraph is not cut in
+two when it fits on one page (`.diagram-block` already marks the diagram case), and a heading is
+never left alone at the bottom of a page. The choice is remembered, and the place being read is
+kept when switching.
+
+## Four kinds of source, side by side
+
+The list on the left should hold any mix of these at the same time:
+
+| Source | What is added | Status |
+|---|---|---|
+| Local folder | A folder on this machine; all its `.md` files, sub-folders included | Built |
+| Local file | One specific `.md` file, without giving access to the rest of its folder | To build |
+| GitHub folder | A repository, or one folder inside it | To build |
+| GitHub file | One specific `.md` file of a repository | To build |
+
+Each entry shows what kind it is (an icon and, for GitHub, the repository and branch). Removing
+one never touches the others.
+
+**Local file.** "Add file" opens the system's file dialog limited to `.md`. Only that file is
+readable, plus the images it links to that sit in its own folder or below. The path guard gets a
+second kind of entry (a single allowed file) next to the folder entries; the `.md`-only rule is
+unchanged.
+
+**GitHub folder or file.** Give a GitHub URL and md-reader downloads it and keeps a local copy,
+so the notes are readable offline like any local source.
+
+- Stored under the app's own data folder (`~/.local/share/md-reader/repos/<owner>/<repo>`).
 - Only one folder wanted: `git clone --filter=blob:none --sparse` plus `git sparse-checkout set
-  <folder>`, so the rest of the repository is not downloaded.
-- **Update after import**: an "Update" button on the imported folder runs `git pull --ff-only`
-  and shows what changed (new, changed and removed notes). The open note reloads by itself, as it
-  already does when a file changes on disk.
+  <folder>`, so the rest of the repository is not downloaded. One file: the same, narrowed to
+  the file and the images it links.
+- **Update after import**: an "Update" button on the entry runs `git pull --ff-only` and shows
+  what changed (new, changed and removed notes). The open note reloads by itself, as it already
+  does when a file changes on disk.
 - The copy is read-only from the app's side: md-reader never commits or pushes.
 - Private repositories: use the credentials `git` already has on this machine; the app stores no
   token.
-- The `.md`-only rule and the path guard apply to imported folders exactly as to local ones.
+- The `.md`-only rule and the path guard apply to imported sources exactly as to local ones.
 
 ## Hosted version, opened as a PWA (possibly with Google Apps Script)
 
@@ -47,16 +81,6 @@ tablet) as an installable PWA, without the local server.
   such as GitHub Pages.
 - Private repositories need a sign-in; the token must never be in the page's code.
 - The `.md`-only rule stays: the hosted app lists and opens Markdown files only.
-
-## Desktop app (Tauri, never Electron)
-
-Electron is ruled out: it bundles Chromium and is heavy on RAM. Tauri uses the system WebKitGTK
-webview, so the app is a few MB.
-
-- Load the same `public/` front end.
-- Replace the "Add folder" browse dialog with the native folder dialog.
-- Port the server routes (`roots`, `tree`, `doc`, `asset`, `watch`) to Rust commands, so no Node
-  process runs.
 
 ## Print / export to PDF
 

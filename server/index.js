@@ -5,7 +5,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RootStore, GuardError, browse, DOC_EXTS, IMAGE_EXTS } from './roots.js';
-import { renderMarkdown } from './render.js';
 
 const HOST = '127.0.0.1';
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -16,6 +15,11 @@ const STATIC = {
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/app.css': ['app.css', 'text/css; charset=utf-8'],
   '/study.css': ['study.css', 'text/css; charset=utf-8'],
+  '/render.js': ['render.js', 'text/javascript; charset=utf-8'],
+  '/backend.js': ['backend.js', 'text/javascript; charset=utf-8'],
+  '/vendor/markdown-it.min.js': ['vendor/markdown-it.min.js', 'text/javascript; charset=utf-8'],
+  '/vendor/markdown-it-task-lists.min.js': ['vendor/markdown-it-task-lists.min.js', 'text/javascript; charset=utf-8'],
+  '/vendor/highlight.min.js': ['vendor/highlight.min.js', 'text/javascript; charset=utf-8'],
   '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
 };
 
@@ -143,8 +147,8 @@ async function route(req, res, url, store) {
   if (pathname === '/api/doc' && method === 'GET') {
     const { file, rel } = store.resolveInside(q.get('root'), q.get('path'), DOC_EXTS);
     if (fs.statSync(file).size > MAX_DOC_BYTES) throw new GuardError(413, 'This file is too large to display.');
-    const source = fs.readFileSync(file, 'utf8');
-    return sendJson(res, 200, { path: rel, ...renderMarkdown(source, { rootId: q.get('root'), docRel: rel }) });
+    // The Markdown is sent as text; the page renders it (public/render.js).
+    return sendJson(res, 200, { path: rel, source: fs.readFileSync(file, 'utf8') });
   }
 
   if (pathname === '/asset' && method === 'GET') {

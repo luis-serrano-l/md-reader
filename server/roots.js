@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { DOC_EXTS, IMAGE_EXTS } from '../public/render.js';
 
-export const DOC_EXTS = new Set(['.md']);
-export const IMAGE_EXTS = new Set(['.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp']);
+export { DOC_EXTS, IMAGE_EXTS };
 
 const SKIP_DIRS = new Set(['node_modules']);
 const MAX_TREE_DEPTH = 8;

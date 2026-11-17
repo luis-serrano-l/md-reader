@@ -1,5 +1,15 @@
-// md-reader front end. Talks to the server only through /api/* and /asset, so a desktop shell
-// can replace the server later without changing this file's structure.
+// md-reader front end. Everything that touches the disk goes through backend.js, which is the
+// local server in a browser and Tauri commands in the desktop app. Markdown is rendered here.
+import { backend } from './backend.js';
+import { createRenderer } from './render.js';
+
+const render = createRenderer({
+  MarkdownIt: window.markdownit,
+  hljs: window.hljs,
+  taskLists: window.markdownitTaskLists,
+});
+const enc = encodeURIComponent;
+const docUrl = (root, path) => `/?root=${enc(root)}&path=${enc(path)}`;
 const $ = (id) => document.getElementById(id);
 const app = $('mdr-app');
 const rootsEl = $('mdr-roots');
@@ -9,7 +19,7 @@ const notice = $('mdr-notice');
 const outline = $('mdr-outline');
 const crumb = $('mdr-crumb');
 
-const state = { roots: [], current: null, events: null, headings: [] };
+const state = { roots: [], current: null, stopWatch: null, headings: [] };
 
 const store = {
   get(key, fallback) {
@@ -29,13 +39,6 @@ const store = {
   },
 };
 
-async function api(url, options) {
-  const res = await fetch(url, options);
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
-  return body;
-}
-
 function el(tag, props = {}, children = []) {
   const node = Object.assign(document.createElement(tag), props);
   node.append(...children);
@@ -47,7 +50,7 @@ const shortPath = (p) => p.replace(/^\/home\/[^/]+/, '~');
 // ---------- Folder list ----------
 
 async function loadRoots() {
-  state.roots = (await api('/api/roots')).roots;
+  state.roots = await backend.listRoots();
   const closed = new Set(store.get('closed', []));
   rootsEl.replaceChildren();
   if (!state.roots.length) {
@@ -81,7 +84,7 @@ async function loadRoots() {
       wrap.dataset.root = root.id;
       root.el = wrap;
       try {
-        const tree = await api(`/api/tree?root=${encodeURIComponent(root.id)}`);
+        const tree = await backend.tree(root.id);
         if (!tree.nodes.length) body.append(el('p', { className: 'root-note', textContent: 'No .md files in this folder.' }));
         else body.append(renderTree(root.id, tree.nodes));
         if (tree.truncated) body.append(el('p', { className: 'root-note', textContent: 'Large folder: list cut short.' }));
@@ -137,11 +140,12 @@ function markActive() {
 }
 
 async function removeRoot(root) {
-  if (!confirm(`Remove "${root.name}" from md-reader?\n\nThe folder and its files stay on disk.`)) return;
+  const yes = await ask(`Remove "${root.name}" from md-reader?`, 'The folder and its files stay on disk.', 'Remove');
+  if (!yes) return;
   try {
-    await api(`/api/roots/${encodeURIComponent(root.id)}`, { method: 'DELETE' });
+    await backend.removeRoot(root.id);
   } catch (err) {
-    alert(err.message);
+    await ask('The folder could not be removed', err.message);
     return;
   }
   if (state.current?.root === root.id) {
@@ -151,6 +155,29 @@ async function removeRoot(root) {
   await loadRoots();
   if (!state.current) showWelcome();
 }
+
+// A small in-page message box. With okLabel it asks a yes/no question; without, it only informs.
+let askQueue = Promise.resolve();
+function ask(title, text, okLabel) {
+  // One box at a time: a second question waits for the first to close.
+  const next = askQueue.then(() => showAsk(title, text, okLabel));
+  askQueue = next.catch(() => {});
+  return next;
+}
+function showAsk(title, text, okLabel) {
+  const dialog = $('mdr-ask');
+  $('mdr-ask-title').textContent = title;
+  $('mdr-ask-text').textContent = text;
+  $('mdr-ask-ok').textContent = okLabel || 'OK';
+  $('mdr-ask-cancel').hidden = !okLabel;
+  dialog.returnValue = '';
+  dialog.showModal();
+  return new Promise((resolve) => {
+    dialog.addEventListener('close', () => resolve(dialog.returnValue === 'ok'), { once: true });
+  });
+}
+$('mdr-ask-ok').addEventListener('click', () => $('mdr-ask').close('ok'));
+$('mdr-ask-cancel').addEventListener('click', () => $('mdr-ask').close(''));
 
 // ---------- Opening a note ----------
 
@@ -170,8 +197,8 @@ function showWelcome() {
 }
 
 function closeDoc() {
-  state.events?.close();
-  state.events = null;
+  state.stopWatch?.();
+  state.stopWatch = null;
   state.current = null;
   state.headings = [];
   sheet.hidden = true;
@@ -187,7 +214,15 @@ const scrollKey = (root, path) => `scroll:${root}:${path}`;
 async function openDoc(root, path, { push = false, hash = '', keepScroll = false } = {}) {
   let doc;
   try {
-    doc = await api(`/api/doc?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`);
+    const file = await backend.readDoc(root, path);
+    doc = {
+      path: file.path,
+      ...render(file.source, {
+        docRel: file.path,
+        assetUrl: (rel) => backend.assetUrl(root, rel),
+        docUrl: (rel) => docUrl(root, rel),
+      }),
+    };
   } catch (err) {
     if (keepScroll) return; // a failed live reload leaves the note on screen
     closeDoc();
@@ -198,7 +233,7 @@ async function openDoc(root, path, { push = false, hash = '', keepScroll = false
   const top = desk.scrollTop;
   state.current = { root, path: doc.path };
 
-  // The HTML comes from the server's Markdown renderer, which does not pass raw HTML through.
+  // The HTML comes from render.js, which does not pass a note's raw HTML through.
   sheet.innerHTML = doc.html;
   sheet.hidden = false;
   notice.replaceChildren();
@@ -210,7 +245,7 @@ async function openDoc(root, path, { push = false, hash = '', keepScroll = false
   markActive();
   store.set('last', state.current);
 
-  const url = `/?root=${encodeURIComponent(root)}&path=${encodeURIComponent(doc.path)}${hash}`;
+  const url = docUrl(root, doc.path) + hash;
   if (push) history.pushState(null, '', url);
   else if (!keepScroll) history.replaceState(null, '', url);
 
@@ -219,16 +254,14 @@ async function openDoc(root, path, { push = false, hash = '', keepScroll = false
     document.getElementById(decodeURIComponent(hash.slice(1))).scrollIntoView();
   } else desk.scrollTop = store.get(scrollKey(root, doc.path), 0);
   updateSpy();
-  if (!sameDoc || !state.events) watch(root, doc.path);
+  if (!sameDoc || !state.stopWatch) watch(root, doc.path);
 }
 
 function watch(root, path) {
-  state.events?.close();
-  const events = new EventSource(`/api/watch?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`);
-  events.onmessage = () => {
+  state.stopWatch?.();
+  state.stopWatch = backend.watch(root, path, () => {
     if (state.current?.root === root && state.current?.path === path) openDoc(root, path, { keepScroll: true });
-  };
-  state.events = events;
+  });
 }
 
 // ---------- Outline ----------
@@ -272,12 +305,21 @@ desk.addEventListener(
   { passive: true },
 );
 
-// Links between notes open in place instead of reloading the app.
+// Links between notes open in place instead of reloading the app. In the desktop app, web links
+// are handed to the system browser.
 sheet.addEventListener('click', (event) => {
-  const link = event.target.closest('a[data-doc]');
-  if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
-  event.preventDefault();
-  openDoc(state.current.root, link.dataset.doc, { push: true, hash: new URL(link.href).hash });
+  if (event.button !== 0) return;
+  const link = event.target.closest('a');
+  if (!link) return;
+  // A browser opens a Ctrl/Shift-click in a new tab; the desktop app has one window.
+  const newTab = backend.kind !== 'tauri' && (event.ctrlKey || event.metaKey || event.shiftKey);
+  if (link.dataset.doc && !newTab) {
+    event.preventDefault();
+    openDoc(state.current.root, link.dataset.doc, { push: true, hash: new URL(link.href).hash });
+  } else if (link.target === '_blank' && backend.openExternal) {
+    event.preventDefault();
+    backend.openExternal(link.href).catch((err) => ask('The link could not be opened', err.message));
+  }
 });
 
 // ---------- Zoom and panels ----------
@@ -303,18 +345,19 @@ $('mdr-toggle-sidebar').addEventListener('click', () => togglePanel('sidebar'));
 $('mdr-toggle-outline').addEventListener('click', () => togglePanel('outline'));
 
 // ---------- Full screen ----------
-// Real browser full screen with the app unchanged: panels and top bar stay. F or the button
-// toggles it; Esc leaves (the browser handles that).
+// Full screen with the app unchanged: panels and top bar stay. F, F11 or the button toggles it;
+// Esc leaves.
 
-function toggleFullscreen() {
-  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-  else document.documentElement.requestFullscreen?.().catch(() => {});
-}
+const toggleFullscreen = () => Promise.resolve(backend.toggleFullscreen()).catch(() => {});
 $('mdr-fullscreen').addEventListener('click', toggleFullscreen);
 document.addEventListener('keydown', (event) => {
   if (event.ctrlKey || event.metaKey || event.altKey || document.querySelector('dialog[open]')) return;
   if (event.target.closest?.('input, textarea, select')) return;
   if (event.key === 'f' || event.key === 'F') toggleFullscreen();
+  else if (event.key === 'F11' && backend.kind === 'tauri') {
+    event.preventDefault();
+    toggleFullscreen();
+  } else if (event.key === 'Escape') backend.exitFullscreen?.().catch(() => {}); // a browser leaves by itself
 });
 
 // ---------- Folder picker ----------
@@ -332,7 +375,7 @@ async function browseTo(dir) {
   pickerError.textContent = '';
   let listing;
   try {
-    listing = await api(`/api/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`);
+    listing = await backend.browse(dir);
   } catch (err) {
     pickerError.textContent = err.message;
     return false;
@@ -355,26 +398,37 @@ async function browseTo(dir) {
   return true;
 }
 
+// Desktop app: the system's own folder dialog. Browser: the in-page folder browser.
 async function openPicker() {
+  if (backend.pickFolder) {
+    try {
+      const path = await backend.pickFolder();
+      if (path) await addRoot(path);
+    } catch (err) {
+      await ask('The folder could not be added', err.message);
+    }
+    return;
+  }
   picker.showModal();
   await browseTo(store.get('picker-dir', null));
   if (!pickerDir) await browseTo(null);
   pickerInput.focus();
 }
 
+async function addRoot(path) {
+  const root = await backend.addRoot(path);
+  await loadRoots();
+  if (!state.current) showWelcome();
+  return root;
+}
+
 async function addFromPicker() {
   const typed = pickerInput.value.trim();
   if (!typed) return;
   try {
-    const { root } = await api('/api/roots', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: typed }),
-    });
+    const root = await addRoot(typed);
     store.set('picker-dir', root.path.replace(/\/[^/]*$/, '') || '/');
     picker.close();
-    await loadRoots();
-    if (!state.current) showWelcome();
   } catch (err) {
     pickerError.textContent = err.message;
   }

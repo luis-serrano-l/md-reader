@@ -1,8 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderMarkdown } from '../server/render.js';
+import MarkdownIt from 'markdown-it';
+import taskLists from 'markdown-it-task-lists';
+import hljs from 'highlight.js/lib/common';
+import { createRenderer } from '../public/render.js';
 
-const render = (src, docRel = 'notes/p3l1.md') => renderMarkdown(src, { rootId: 'r1', docRel });
+const renderMarkdown = createRenderer({ MarkdownIt, hljs, taskLists });
+const enc = encodeURIComponent;
+const render = (src, docRel = 'notes/p3l1.md') =>
+  renderMarkdown(src, {
+    docRel,
+    assetUrl: (rel) => `/asset?root=r1&path=${enc(rel)}`,
+    docUrl: (rel) => `/?root=r1&path=${enc(rel)}`,
+  });
 
 test('title, heading ids and outline', () => {
   const { title, toc, html } = render('# P3L1: scheduling\n\n## Part 1 — What\n\n## Part 1 — What\n');

@@ -58,6 +58,21 @@
     </form>
   </dialog>
 
+  <dialog class="picker ask" id="mdr-ask" aria-labelledby="mdr-ask-title">
+    <div class="picker-form">
+      <h2 id="mdr-ask-title"></h2>
+      <p class="picker-help" id="mdr-ask-text"></p>
+      <div class="picker-actions">
+        <span class="picker-count"></span>
+        <button type="button" class="btn" id="mdr-ask-cancel">Cancel</button>
+        <button type="button" class="btn primary" id="mdr-ask-ok">OK</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/vendor/markdown-it.min.js"></script>
+  <script src="/vendor/markdown-it-task-lists.min.js"></script>
+  <script src="/vendor/highlight.min.js"></script>
   <script src="/app.js" type="module"></script>
 </body>
 </html>
