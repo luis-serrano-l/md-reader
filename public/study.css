@@ -43,8 +43,9 @@
   box-sizing: border-box;
   width: var(--page-width);
   max-width: 100%;
-  /* Margins shrink with the window (1.4in of 8.5in = 16.5%), so the text column is never squeezed. */
-  padding: clamp(20px, 10.5%, var(--margin-y)) clamp(16px, 16.5%, var(--margin-x));
+  /* Side margins are the PDF's (1.4in) on a full-width sheet and shrink faster than the sheet
+     on a narrow one (tablet upright, phone), so the text column is never squeezed. */
+  padding: clamp(20px, 10.5%, var(--margin-y)) clamp(16px, calc((100% - 340px) * 0.3), var(--margin-x));
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-body);
@@ -117,9 +118,12 @@
 /* Pages view (public/pages.js): the sheet becomes a column of Letter pages. */
 .sheet.paged { background: none; padding: 0; counter-reset: mdr-page; }
 .sheet.paged > .page { box-sizing: border-box; position: relative; display: flex; flex-direction: column;
-                       min-height: calc(var(--page-width) * 11 / 8.5); background: var(--paper);
-                       padding: clamp(20px, 10.5%, var(--margin-y)) clamp(16px, 16.5%, var(--margin-x));
+                       aspect-ratio: 8.5 / 11; background: var(--paper); /* Letter, at any width */
+                       padding: clamp(20px, 10.5%, var(--margin-y)) clamp(16px, calc((100% - 340px) * 0.3), var(--margin-x));
                        counter-increment: mdr-page; scroll-margin-top: 12px; }
+@supports not (aspect-ratio: 1) {
+  .sheet.paged > .page { min-height: calc(var(--page-width) * 11 / 8.5); } /* older browsers: full-size Letter */
+}
 .sheet.paged > .page::after { content: counter(mdr-page); position: absolute; left: 0; right: 0; bottom: 0.32in;
                               text-align: center; font: 9pt var(--font-head); color: var(--ink); opacity: 0.55; }
 .sheet.paged .page-body { flex: 1 0 auto; display: flow-root; min-width: 0; }

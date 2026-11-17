@@ -21,7 +21,7 @@
 // Only on desktop:  pickFolder(), pickFile() -> path or null (native dialog), openExternal(url),
 //                   exitFullscreen()
 
-import { webBackend } from './web-backend.js';
+import { webBackend, toggleBrowserFullscreen } from './web-backend.js';
 
 const enc = encodeURIComponent;
 
@@ -62,10 +62,7 @@ function httpBackend() {
         body: JSON.stringify({ settings }),
       }),
     browse: (dir, files = false) => api(`/api/browse?files=${files ? 1 : 0}${dir ? `&dir=${enc(dir)}` : ''}`),
-    async toggleFullscreen() {
-      if (document.fullscreenElement) await document.exitFullscreen?.().catch(() => {});
-      else await document.documentElement.requestFullscreen?.().catch(() => {});
-    },
+    toggleFullscreen: toggleBrowserFullscreen,
   };
 }
 

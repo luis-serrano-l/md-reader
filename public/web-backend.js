@@ -243,6 +243,24 @@ function startWorker() {
   });
 }
 
+// Full screen of the browser itself, for the two back ends that run in one. Resolves to whether
+// the page is in full screen afterwards. Older iPad systems know it only under its `webkit`
+// name, where the call returns nothing and the change comes a moment later, so that is waited for.
+export async function toggleBrowserFullscreen() {
+  const root = document.documentElement;
+  const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const was = isFull();
+  const call = was ? document.exitFullscreen || document.webkitExitFullscreen : root.requestFullscreen || root.webkitRequestFullscreen;
+  if (!call) return was;
+  try {
+    await call.call(was ? document : root);
+  } catch {
+    return isFull();
+  }
+  for (let i = 0; i < 10 && isFull() === was; i++) await new Promise((done) => setTimeout(done, 50));
+  return isFull();
+}
+
 export function webBackend() {
   restrictPage();
   const ready = Promise.all([startWorker(), readToken()]);
@@ -331,10 +349,7 @@ export function webBackend() {
     watch: () => () => {}, // nothing changes under a hosted page; "Update" asks GitHub again
     getSettings: async () => local.get('settings', {}),
     saveSettings: async (settings) => local.set('settings', settings),
-    async toggleFullscreen() {
-      if (document.fullscreenElement) await document.exitFullscreen?.().catch(() => {});
-      else await document.documentElement.requestFullscreen?.().catch(() => {});
-    },
+    toggleFullscreen: toggleBrowserFullscreen,
   };
 }
 

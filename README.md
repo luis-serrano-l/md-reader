@@ -99,10 +99,9 @@ Paste an address in **Add… → From GitHub**. Needs `git` (2.27 or newer) on t
 | Control | What it does |
 |---|---|
 | ☰ | Show or hide the folder list |
-| ▤ | Pages view or continuous view (`Page Up` / `Page Down` move one page in pages view) |
 | − 100% + | Zoom the note |
 | ⎙ | Print the note, or save it as a PDF from the print dialog |
-| ⚙ | Fonts and colours |
+| ⚙ | View (continuous or pages), fonts and colours. In pages view `Page Up` / `Page Down` move one page |
 | ⛶ or `F` | Full screen on or off (`Esc` also leaves; `F11` too in the desktop app). On an iPad or iPhone, which have no full screen for pages, the note takes the whole window and **✕** brings the panels back |
 | ≡ | Show or hide the outline |
 
@@ -152,9 +151,14 @@ and the page installs as an app on a phone or tablet.
 
 ## The look
 
-The ⚙ button opens **Fonts and colours**: three looks (Study, Plain white, Dark with true black for OLED screens), the fonts of
-the text, headings and code, the text size, and four colours (paper, text, headings, accent).
-The choice is saved with the folder list and shared by the browser version and the desktop app.
+The ⚙ button opens **View, fonts and colours**: continuous or pages view, three looks (Study,
+Plain white, Dark with true black for OLED screens), the fonts of the text, headings and code,
+the text size, and four colours (paper, text, headings, accent). Looks, fonts and colours are
+saved with the list of sources and shared by the browser version and the desktop app; the view
+is remembered by each of them separately.
+
+On a tablet held upright or a phone, the list of sources lies over the note and a tap on the
+note puts it away; the page margins shrink so the text keeps its width.
 
 Printing uses Letter pages with the study PDF's margins. A table row, a code block or a diagram
 with its lead-in paragraph is not cut in two when it fits on a page.

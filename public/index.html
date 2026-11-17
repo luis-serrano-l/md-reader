@@ -23,14 +23,13 @@
         <button type="button" class="icon-btn" id="mdr-toggle-sidebar" title="Show or hide the folder list" aria-label="Show or hide the folder list">☰</button>
         <div class="crumb" id="mdr-crumb"></div>
         <span class="page-info" id="mdr-page-info" hidden></span>
-        <button type="button" class="icon-btn" id="mdr-view" title="Pages view or continuous view" aria-label="Pages view" aria-pressed="false">▤</button>
         <div class="zoom" role="group" aria-label="Zoom">
           <button type="button" class="icon-btn" id="mdr-zoom-out" title="Smaller" aria-label="Smaller">−</button>
           <button type="button" class="zoom-value" id="mdr-zoom-reset" title="Back to 100%">100%</button>
           <button type="button" class="icon-btn" id="mdr-zoom-in" title="Larger" aria-label="Larger">+</button>
         </div>
         <button type="button" class="icon-btn" id="mdr-print" title="Print or save as PDF" aria-label="Print">⎙</button>
-        <button type="button" class="icon-btn" id="mdr-settings-open" title="Fonts and colours" aria-label="Fonts and colours">⚙</button>
+        <button type="button" class="icon-btn" id="mdr-settings-open" title="View, fonts and colours" aria-label="View, fonts and colours">⚙</button>
         <button type="button" class="icon-btn" id="mdr-fullscreen" title="Full screen on or off (F). Esc also leaves." aria-label="Full screen">⛶</button>
         <button type="button" class="icon-btn" id="mdr-toggle-outline" title="Show or hide the outline" aria-label="Show or hide the outline">≡</button>
       </header>
@@ -113,8 +112,13 @@
 
   <dialog class="picker settings" id="mdr-settings" aria-labelledby="mdr-settings-title">
     <form method="dialog" class="picker-form" id="mdr-settings-form">
-      <h2 id="mdr-settings-title">Fonts and colours</h2>
+      <h2 id="mdr-settings-title">View, fonts and colours</h2>
       <div class="settings-grid">
+        <span id="mdr-view-label">View</span>
+        <div class="segmented" role="group" aria-labelledby="mdr-view-label">
+          <button type="button" id="mdr-view-continuous" aria-pressed="true">Continuous</button>
+          <button type="button" id="mdr-view-pages" aria-pressed="false">Pages</button>
+        </div>
         <label for="mdr-set-preset">Look</label>
         <select id="mdr-set-preset"></select>
       </div>

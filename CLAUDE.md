@@ -126,7 +126,11 @@ file busy".
   settings panel only sets these variables (the shell's own colours are variables on `:root` in
   `app.css`, set by the same panel).
 - `public/app.css`: the shell (folder list, top bar, desk, outline, picker). The three panels
-  have fixed grid columns; a hidden panel must not let another slide into its column.
+  have fixed grid columns; a hidden panel must not let another slide into its column. Up to
+  1000px wide the list of sources lies over the note (`isNarrow()` in `app.js` uses the same
+  query); touch rules sit under `(hover: none)` and `(pointer: coarse)`. `.app.reading` is the
+  stand-in for full screen where the browser has none (iPad, iPhone): panels and bar hidden,
+  sheet zoomed to the window's width.
 - `public/app.js`: all front-end behaviour. Element ids start with `mdr-`; heading ids in notes
   start with `h-`, so the two never collide.
 

@@ -24,7 +24,7 @@ html, body { height: 100%; margin: 0; }
 body { background: var(--desk); color: var(--ui-ink); font-family: var(--ui-font); font-size: 14px; }
 [hidden] { display: none !important; }
 
-.app { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--outline-w); height: 100vh; }
+.app { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--outline-w); height: 100vh; height: 100dvh; }
 .app.no-sidebar { grid-template-columns: 0 minmax(0, 1fr) var(--outline-w); }
 .app.no-outline { grid-template-columns: var(--sidebar-w) minmax(0, 1fr) 0; }
 .app.no-sidebar.no-outline { grid-template-columns: 0 minmax(0, 1fr) 0; }
@@ -163,6 +163,12 @@ details[open] > summary::before { content: "▾"; }
 .settings-color input { width: 44px; height: 28px; padding: 0; border: 1px solid var(--ui-line); border-radius: 6px;
                         background: var(--ui-field); cursor: pointer; }
 .settings-color .btn { padding: 3px 9px; font-size: 12.5px; }
+.segmented { display: flex; }
+.segmented button { flex: 1; font: inherit; padding: 6px 10px; border: 1px solid var(--ui-line); background: var(--ui-field);
+                    color: var(--ui-ink); cursor: pointer; }
+.segmented button:first-child { border-radius: 6px 0 0 6px; }
+.segmented button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+.segmented button[aria-pressed="true"] { background: var(--ui-accent); border-color: var(--ui-accent); color: var(--ui-accent-ink); }
 .settings h3 { margin: 8px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ui-muted); }
 
 /* Narrow windows: the outline goes first, then the folder list becomes an overlay. */
@@ -171,18 +177,42 @@ details[open] > summary::before { content: "▾"; }
   .app.no-sidebar, .app.no-sidebar.no-outline { grid-template-columns: 0 minmax(0, 1fr) 0; }
   .outline, #mdr-toggle-outline { display: none; }
 }
-@media (max-width: 760px) {
+/* Tablet held upright, phone: the list lies over the note, which keeps the whole width.
+   Keep 1000px in step with isNarrow() in app.js. */
+@media (max-width: 1000px) {
   .app, .app.no-outline, .app.no-sidebar, .app.no-sidebar.no-outline { grid-template-columns: minmax(0, 1fr); }
   .sidebar { position: fixed; inset: 0 auto 0 0; width: min(var(--sidebar-w), 86vw); z-index: 5;
-             box-shadow: 0 0 40px rgba(40, 30, 10, 0.35); }
+             box-shadow: 0 0 0 100vmax rgba(40, 35, 25, 0.35), 0 0 40px rgba(40, 30, 10, 0.35); }
   .main { grid-column: 1; grid-row: 1; }
+}
+@media (max-width: 760px) {
   .desk { padding: 12px 8px 60px; }
+  .crumb-root { display: none; }
+  .bar { gap: 4px; padding: 6px; }
+  .zoom-value { min-width: 46px; }
+}
+/* Touch screens: nothing depends on hovering, and everything tapped is large enough. */
+@media (hover: none) {
+  .root-remove { visibility: visible; }
+}
+@media (pointer: coarse) {
+  .icon-btn, .zoom-value { width: 40px; height: 40px; }
+  .zoom-value { width: auto; }
+  .file, .root summary, .dir summary { padding-top: 9px; padding-bottom: 9px; }
+  .root > details > summary { padding-right: 84px; }
+  .root-remove, .root-update { width: 36px; height: 36px; top: 3px; }
+  .root-update { right: 42px; }
+  .picker-list button, .btn { padding-top: 9px; padding-bottom: 9px; }
+  .outline a { padding-top: 7px; padding-bottom: 7px; }
 }
 
 /* Full screen where the browser has none (iPad, iPhone): the note takes the whole window. */
 .app.reading { grid-template-columns: minmax(0, 1fr); }
 .app.reading .sidebar, .app.reading .outline, .app.reading .bar { display: none; }
 .app.reading .main { grid-column: 1; }
+.app.reading .desk { padding: 0; }
+.app.reading .desk .sheet, .app.reading .desk .sheet.paged > .page { outline: 0; box-shadow: none; }
+.app.reading .desk .sheet.paged > .page + .page { margin-top: 0; border-top: 1px solid var(--sheet-edge); }
 .exit-reading { position: fixed; z-index: 6; top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right));
                 width: 36px; height: 36px; border: 1px solid var(--ui-line); border-radius: 50%; background: var(--ui-bg);
                 color: var(--ui-ink); font: inherit; font-size: 15px; cursor: pointer; opacity: 0.55; }

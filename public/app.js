@@ -21,6 +21,8 @@ const sheet = $('mdr-sheet');
 const notice = $('mdr-notice');
 const outline = $('mdr-outline');
 const crumb = $('mdr-crumb');
+// Below this width the list of sources lies over the note instead of beside it (see app.css).
+const isNarrow = () => window.matchMedia('(max-width: 1000px)').matches;
 
 const state = { roots: [], current: null, stopWatch: null, headings: [], html: '', toc: [], paged: false, layoutRun: 0 };
 
@@ -139,7 +141,7 @@ function renderTree(rootId, nodes) {
       button.dataset.path = node.path;
       button.addEventListener('click', () => {
         openDoc(rootId, node.path, { push: true });
-        if (window.innerWidth <= 760) app.classList.add('no-sidebar');
+        if (isNarrow()) app.classList.add('no-sidebar');
       });
       list.append(el('li', {}, [button]));
     }
@@ -267,7 +269,10 @@ async function openDoc(root, path, { push = false, hash = '', keepScroll = false
   document.title = `${doc.title} · md-reader`;
   const rootInfo = state.roots.find((r) => r.id === root);
   // A single file is its own entry: its name is not repeated.
-  crumb.replaceChildren(rootInfo && rootInfo.kind !== 'file' ? `${rootInfo.name} / ` : '', el('b', { textContent: doc.path }));
+  crumb.replaceChildren(
+    el('span', { className: 'crumb-root', textContent: rootInfo && rootInfo.kind !== 'file' ? `${rootInfo.name} / ` : '' }),
+    el('b', { textContent: doc.path }),
+  );
   crumb.title = !rootInfo ? doc.path : rootInfo.kind === 'file' ? rootInfo.path : `${rootInfo.path}/${doc.path}`;
   markActive();
   store.set('last', state.current);
@@ -416,18 +421,23 @@ function updatePageInfo() {
   info.hidden = !total;
   if (!total) return;
   const box = desk.getBoundingClientRect();
-  info.textContent = `page ${currentPage(sheet, box.top + box.height / 2)} of ${total}`;
+  const page = currentPage(sheet, box.top + box.height / 2);
+  info.textContent = window.matchMedia('(max-width: 760px)').matches ? `${page} / ${total}` : `page ${page} of ${total}`;
 }
 
 function setView(paged) {
   state.paged = paged;
   store.set('view', paged ? 'pages' : 'continuous');
-  const button = $('mdr-view');
-  button.setAttribute('aria-pressed', String(paged));
-  button.title = paged ? 'Pages view is on. Click for continuous view.' : 'Continuous view is on. Click for pages view.';
+  showView();
   return relayout();
 }
-$('mdr-view').addEventListener('click', () => setView(!state.paged));
+// The choice sits in the "View, fonts and colours" panel.
+function showView() {
+  $('mdr-view-continuous').setAttribute('aria-pressed', String(!state.paged));
+  $('mdr-view-pages').setAttribute('aria-pressed', String(state.paged));
+}
+$('mdr-view-continuous').addEventListener('click', () => state.paged && setView(false));
+$('mdr-view-pages').addEventListener('click', () => state.paged || setView(true));
 
 // Page Up and Page Down move one page at a time in pages view, or one screen when a page is
 // taller than the window (large zoom), so no part of a page is skipped.
@@ -530,6 +540,14 @@ function togglePanel(name) {
   store.set(`no-${name}`, hidden);
 }
 $('mdr-toggle-sidebar').addEventListener('click', () => togglePanel('sidebar'));
+// On a narrow window the list lies over the note (app.css): a tap on the note puts it away.
+// That tap does nothing else: it must not also follow a link or press a button under it.
+document.querySelector('.main').addEventListener('click', (event) => {
+  if (!isNarrow() || app.classList.contains('no-sidebar') || event.target.closest('#mdr-toggle-sidebar')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  app.classList.add('no-sidebar');
+}, true);
 $('mdr-toggle-outline').addEventListener('click', () => togglePanel('outline'));
 
 // ---------- Fonts and colours ----------
@@ -676,16 +694,30 @@ window.addEventListener('afterprint', () => {
 // a small button brings them back.
 const exitReading = $('mdr-exit-reading');
 function setReading(on) {
-  const top = desk.scrollTop;
-  $('mdr-app').classList.toggle('reading', on);
+  if (on === app.classList.contains('reading')) return;
+  const place = desk.scrollTop / (desk.scrollHeight || 1);
+  app.classList.toggle('reading', on);
   exitReading.hidden = !on;
-  desk.scrollTop = top;
+  fitReading();
+  desk.scrollTop = place * desk.scrollHeight;
 }
+// In that mode the sheet is as wide as the window, edge to edge; the chosen zoom comes back after.
+function fitReading() {
+  if (!app.classList.contains('reading')) return void (sheet.style.zoom = store.get('zoom', 1));
+  // Never beyond the largest zoom the buttons give, however wide the window.
+  sheet.style.zoom = Math.min(2, desk.clientWidth / Math.min(PAGE_WIDTH_PX, desk.clientWidth));
+}
+const PAGE_WIDTH_PX = 816; // 8.5in: --page-width of the sheet in study.css
+// The desk's width also changes when the device is turned or a scroll bar appears.
+new ResizeObserver(() => {
+  if (app.classList.contains('reading')) fitReading();
+  updatePageInfo();
+}).observe(desk);
 async function toggleFullscreen() {
-  if ($('mdr-app').classList.contains('reading')) return setReading(false);
-  const was = !!document.fullscreenElement;
-  await Promise.resolve(backend.toggleFullscreen()).catch(() => {});
-  if (backend.kind !== 'tauri' && !was && !document.fullscreenElement) setReading(true);
+  if (app.classList.contains('reading')) return setReading(false);
+  const was = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  const full = await Promise.resolve(backend.toggleFullscreen()).catch(() => false);
+  if (backend.kind !== 'tauri' && !was && !full) setReading(true);
 }
 $('mdr-fullscreen').addEventListener('click', toggleFullscreen);
 exitReading.addEventListener('click', () => setReading(false));
@@ -955,11 +987,11 @@ window.addEventListener('popstate', () => {
 });
 
 async function start() {
-  if (store.get('no-sidebar', false) || window.innerWidth <= 760) app.classList.add('no-sidebar');
+  if (store.get('no-sidebar', false) || isNarrow()) app.classList.add('no-sidebar');
   if (store.get('no-outline', false)) app.classList.add('no-outline');
   setZoom(store.get('zoom', 1));
   state.paged = store.get('view', 'continuous') === 'pages';
-  $('mdr-view').setAttribute('aria-pressed', String(state.paged));
+  showView();
   buildSettingsForm();
   buildSourceChoices();
   await loadSettings();
