@@ -179,6 +179,15 @@ details[open] > summary::before { content: "▾"; }
   .desk { padding: 12px 8px 60px; }
 }
 
+/* Full screen where the browser has none (iPad, iPhone): the note takes the whole window. */
+.app.reading { grid-template-columns: minmax(0, 1fr); }
+.app.reading .sidebar, .app.reading .outline, .app.reading .bar { display: none; }
+.app.reading .main { grid-column: 1; }
+.exit-reading { position: fixed; z-index: 6; top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right));
+                width: 36px; height: 36px; border: 1px solid var(--ui-line); border-radius: 50%; background: var(--ui-bg);
+                color: var(--ui-ink); font: inherit; font-size: 15px; cursor: pointer; opacity: 0.55; }
+.exit-reading:hover, .exit-reading:focus-visible { opacity: 1; }
+
 /* Printing (or "Save as PDF" in the print dialog): Letter pages with the study PDF's margins.
    The eight margin boxes are painted with the paper colour so the whole page is paper, as in
    the PDF. A browser without margin boxes leaves the margins white. */

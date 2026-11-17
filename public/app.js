@@ -671,8 +671,24 @@ window.addEventListener('afterprint', () => {
 // Full screen with the app unchanged: panels and top bar stay. F, F11 or the button toggles it;
 // Esc leaves.
 
-const toggleFullscreen = () => Promise.resolve(backend.toggleFullscreen()).catch(() => {});
+// Where the browser has no full screen for pages (iPad and iPhone, above all as an installed
+// app), the button gives the note the whole window instead: panels and top bar are hidden and
+// a small button brings them back.
+const exitReading = $('mdr-exit-reading');
+function setReading(on) {
+  const top = desk.scrollTop;
+  $('mdr-app').classList.toggle('reading', on);
+  exitReading.hidden = !on;
+  desk.scrollTop = top;
+}
+async function toggleFullscreen() {
+  if ($('mdr-app').classList.contains('reading')) return setReading(false);
+  const was = !!document.fullscreenElement;
+  await Promise.resolve(backend.toggleFullscreen()).catch(() => {});
+  if (backend.kind !== 'tauri' && !was && !document.fullscreenElement) setReading(true);
+}
 $('mdr-fullscreen').addEventListener('click', toggleFullscreen);
+exitReading.addEventListener('click', () => setReading(false));
 document.addEventListener('keydown', (event) => {
   if (event.ctrlKey || event.metaKey || event.altKey || document.querySelector('dialog[open]')) return;
   if (event.target.closest?.('input, textarea, select')) return;
@@ -680,7 +696,10 @@ document.addEventListener('keydown', (event) => {
   else if (event.key === 'F11' && backend.kind === 'tauri') {
     event.preventDefault();
     toggleFullscreen();
-  } else if (event.key === 'Escape') backend.exitFullscreen?.().catch(() => {}); // a browser leaves by itself
+  } else if (event.key === 'Escape') {
+    setReading(false);
+    backend.exitFullscreen?.().catch(() => {}); // a browser leaves by itself
+  }
 });
 
 // ---------- Sources from GitHub ----------

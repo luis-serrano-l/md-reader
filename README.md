@@ -103,7 +103,7 @@ Paste an address in **Add… → From GitHub**. Needs `git` (2.27 or newer) on t
 | − 100% + | Zoom the note |
 | ⎙ | Print the note, or save it as a PDF from the print dialog |
 | ⚙ | Fonts and colours |
-| ⛶ or `F` | Full screen on or off (`Esc` also leaves; `F11` too in the desktop app) |
+| ⛶ or `F` | Full screen on or off (`Esc` also leaves; `F11` too in the desktop app). On an iPad or iPhone, which have no full screen for pages, the note takes the whole window and **✕** brings the panels back |
 | ≡ | Show or hide the outline |
 
 The open note reloads by itself when the file changes on disk and keeps its scroll position.
