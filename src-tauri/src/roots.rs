@@ -16,6 +16,7 @@ pub const IMAGE_EXTS: &[&str] = &["svg", "png", "jpg", "jpeg", "gif", "webp"];
 const SKIP_DIRS: &[&str] = &["node_modules"];
 const MAX_TREE_DEPTH: usize = 8;
 const MAX_TREE_FILES: usize = 5000;
+const MAX_SETTINGS_BYTES: usize = 8 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -142,15 +143,48 @@ impl RootStore {
         }
     }
 
-    fn save(&self) -> std::io::Result<()> {
+    /// The whole config file as it is on disk now, or an empty object.
+    fn read_file(&self) -> serde_json::Map<String, serde_json::Value> {
+        fs::read_to_string(&self.file)
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .and_then(|data| data.as_object().cloned())
+            .unwrap_or_default()
+    }
+
+    /// Writes one key of the config file and keeps the rest as it is on disk, so the desktop
+    /// app and the browser version (which share the file) do not undo each other's changes.
+    fn write(&self, key: &str, value: serde_json::Value) -> std::io::Result<()> {
         if let Some(dir) = self.file.parent() {
             fs::create_dir_all(dir)?;
         }
-        let paths: Vec<String> = self.roots.iter().map(|r| r.path.to_string_lossy().into_owned()).collect();
-        let text = serde_json::to_string_pretty(&serde_json::json!({ "roots": paths }))? + "\n";
+        let mut data = self.read_file();
+        data.insert(key.to_string(), value);
+        let text = serde_json::to_string_pretty(&serde_json::Value::Object(data))? + "\n";
         let tmp = self.file.with_extension(format!("json.{}.tmp", std::process::id()));
         fs::write(&tmp, text)?;
         fs::rename(&tmp, &self.file)
+    }
+
+    fn save(&self) -> std::io::Result<()> {
+        let paths: Vec<String> = self.roots.iter().map(|r| r.path.to_string_lossy().into_owned()).collect();
+        self.write("roots", serde_json::json!(paths))
+    }
+
+    /// Fonts and colours. Stored as given; the page checks every value before using it
+    /// (`public/settings.js`), so this only keeps the file small and well-formed.
+    pub fn settings(&self) -> serde_json::Value {
+        self.read_file().remove("settings").filter(|s| s.is_object()).unwrap_or_else(|| serde_json::json!({}))
+    }
+
+    pub fn save_settings(&self, settings: serde_json::Value) -> Result<(), GuardError> {
+        if !settings.is_object() {
+            return fail(Kind::BadRequest, "Settings must be an object.");
+        }
+        if settings.to_string().len() > MAX_SETTINGS_BYTES {
+            return fail(Kind::BadRequest, "Settings are too large.");
+        }
+        self.write("settings", settings).or_else(|_| fail(Kind::BadRequest, "The settings could not be saved."))
     }
 
     fn info(root: &Root) -> RootInfo {
@@ -175,6 +209,7 @@ impl RootStore {
         if input.is_empty() || input.contains('\0') {
             return fail(Kind::BadRequest, "Give the path of a folder.");
         }
+        self.load(); // the browser version may have changed the list since it was read
         let wanted = expand_home(input);
         if !wanted.is_absolute() {
             return fail(Kind::BadRequest, "The path must be absolute (start with / or ~).");
@@ -200,6 +235,7 @@ impl RootStore {
     }
 
     pub fn remove(&mut self, id: &str) -> Result<(), GuardError> {
+        self.load();
         let Some(index) = self.roots.iter().position(|r| r.id == id) else {
             return fail(Kind::NotFound, "Unknown folder.");
         };
@@ -488,6 +524,21 @@ mod tests {
         assert_eq!(f.store.add(missing.to_str().unwrap()).unwrap_err().kind, Kind::NotFound);
         assert_eq!(f.store.add("notes").unwrap_err().kind, Kind::BadRequest);
         assert_eq!(f.store.add("/").unwrap_err().kind, Kind::BadRequest);
+    }
+
+    #[test]
+    fn settings_are_kept_next_to_the_folders_and_neither_overwrites_the_other() {
+        let mut f = fixture();
+        assert_eq!(f.store.settings(), serde_json::json!({}));
+        f.store.save_settings(serde_json::json!({ "preset": "dark" })).unwrap();
+        assert_eq!(f.store.save_settings(serde_json::json!("dark")).unwrap_err().kind, Kind::BadRequest);
+        let big = serde_json::json!({ "x": "y".repeat(9000) });
+        assert_eq!(f.store.save_settings(big).unwrap_err().kind, Kind::BadRequest);
+        let sub = f.root.join("sub");
+        f.store.add(sub.to_str().unwrap()).unwrap();
+        let reloaded = RootStore::new(f.store.file.clone());
+        assert_eq!(reloaded.list().len(), 2);
+        assert_eq!(reloaded.settings(), serde_json::json!({ "preset": "dark" }));
     }
 
     #[test]

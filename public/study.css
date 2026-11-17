@@ -23,6 +23,15 @@
   --th-bg: #e3ebf5;
   --th-ink: #14365d;
   --zebra: #f4efe2;
+  --sheet-edge: transparent;   /* outline of the sheet, for looks where paper and desk are the same colour */
+  --check-bg: #fff;
+  --check-line: #8a9bb0;
+  --hl-comment: #7a7566;
+  --hl-keyword: #14365d;
+  --hl-string: #2a6a4f;
+  --hl-number: #8a2d2d;
+  --hl-title: #7a4a14;
+  --hl-meta: #6b4a8a;
   --font-body: "Bitstream Charter", "DejaVu Serif", Georgia, serif;
   --font-head: "Noto Sans", "DejaVu Sans", sans-serif;
   --font-mono: "Fira Code", "DejaVu Sans Mono", monospace;
@@ -90,14 +99,14 @@
 .sheet ul.contains-task-list { list-style: none; }
 .sheet li.task-list-item { position: relative; }
 .sheet li.task-list-item input[type=checkbox] { appearance: none; position: absolute; left: -17pt; top: 3.5pt;
-       width: 10.4pt; height: 10.4pt; margin: 0; border: 1.3pt solid #8a9bb0; border-radius: 2.5pt; background: #fff; }
+       width: 10.4pt; height: 10.4pt; margin: 0; border: 1.3pt solid var(--check-line); border-radius: 2.5pt; background: var(--check-bg); }
 .sheet li.task-list-item input[type=checkbox]:checked { border-color: var(--h3); background: var(--h3) center / 9pt 9pt no-repeat
        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M3 8.5 L6.5 12 L13 4.5' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/></svg>"); }
 
 /* Code colours: quiet, on the same paper. */
-.sheet .hljs-comment, .sheet .hljs-quote { color: #7a7566; font-style: italic; }
-.sheet .hljs-keyword, .sheet .hljs-selector-tag, .sheet .hljs-literal, .sheet .hljs-built_in, .sheet .hljs-type { color: #14365d; font-weight: 600; }
-.sheet .hljs-string, .sheet .hljs-regexp, .sheet .hljs-meta .hljs-string { color: #2a6a4f; }
-.sheet .hljs-number, .sheet .hljs-symbol { color: #8a2d2d; }
-.sheet .hljs-title, .sheet .hljs-section, .sheet .hljs-attr { color: #7a4a14; }
-.sheet .hljs-meta { color: #6b4a8a; }
+.sheet .hljs-comment, .sheet .hljs-quote { color: var(--hl-comment); font-style: italic; }
+.sheet .hljs-keyword, .sheet .hljs-selector-tag, .sheet .hljs-literal, .sheet .hljs-built_in, .sheet .hljs-type { color: var(--hl-keyword); font-weight: 600; }
+.sheet .hljs-string, .sheet .hljs-regexp, .sheet .hljs-meta .hljs-string { color: var(--hl-string); }
+.sheet .hljs-number, .sheet .hljs-symbol { color: var(--hl-number); }
+.sheet .hljs-title, .sheet .hljs-section, .sheet .hljs-attr { color: var(--hl-title); }
+.sheet .hljs-meta { color: var(--hl-meta); }

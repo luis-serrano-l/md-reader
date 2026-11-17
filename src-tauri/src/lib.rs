@@ -74,6 +74,16 @@ fn tree(state: State<'_, AppState>, root: String) -> CommandResult<Tree> {
     state.store.lock().unwrap().tree(&root).map_err(message)
 }
 
+#[tauri::command]
+fn get_settings(state: State<'_, AppState>) -> serde_json::Value {
+    state.store.lock().unwrap().settings()
+}
+
+#[tauri::command]
+fn save_settings(state: State<'_, AppState>, settings: serde_json::Value) -> CommandResult<()> {
+    state.store.lock().unwrap().save_settings(settings).map_err(message)
+}
+
 /// The Markdown text of a note. The page renders it (`public/render.js`).
 #[tauri::command]
 fn read_doc(state: State<'_, AppState>, root: String, path: String) -> CommandResult<Doc> {
@@ -212,6 +222,8 @@ pub fn run() {
             add_root,
             remove_root,
             tree,
+            get_settings,
+            save_settings,
             read_doc,
             watch_doc,
             unwatch_doc,

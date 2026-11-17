@@ -61,6 +61,11 @@ file busy".
   nothing; the libraries are passed to `createRenderer()`. Core rules add heading ids and the
   outline, rewrite relative images to asset URLs and relative `.md` links to in-app links, and
   wrap a `.svg` diagram with the paragraph that introduces it (`.diagram-block`).
+- `public/settings.js`: fonts and colours. Pure data and functions, tested in
+  `test/settings.test.js`. A setting only ever becomes a CSS custom property; `normalize()`
+  drops anything that is not a known look, a listed font, a size in range or a `#rrggbb`
+  colour. Stored under `settings` in the config file, which both back ends write one key at a
+  time (`write()`), keeping the rest as it is on disk.
 - `public/backend.js`: the only file that knows which back end is there. `window.__TAURI__`
   present: Tauri commands; otherwise `fetch` to the Node server. New back-end calls go here,
   with both implementations.
@@ -74,7 +79,8 @@ file busy".
 - `public/study.css`: the look of the note. A port of the stylesheet behind the study PDFs
   (`~/notes/middle-term-exam-prep/readme-study.css`). Every font and colour is a
   CSS custom property on `.sheet`; add new ones there instead of hard-coding values, because the
-  planned settings panel will only set these variables.
+  settings panel only sets these variables (the shell's own colours are variables on `:root` in
+  `app.css`, set by the same panel).
 - `public/app.css`: the shell (folder list, top bar, desk, outline, picker). The three panels
   have fixed grid columns; a hidden panel must not let another slide into its column.
 - `public/app.js`: all front-end behaviour. Element ids start with `mdr-`; heading ids in notes
@@ -92,5 +98,7 @@ file busy".
   `~/notes/final-exam-prep/notes/p3l1-scheduling-study.pdf`, with a headless Chrome
   screenshot. The page keeps a live-reload connection open, so pass `--timeout=6000` to Chrome
   instead of `--virtual-time-budget`, which never finishes.
+- Printing: `Page.printToPDF` through the Chrome DevTools protocol (plain `--print-to-pdf`
+  prints before the note is rendered). The page margins are painted by `@page` margin boxes.
 - Front-end behaviour (clicks, panels, full screen) is not covered by tests. Say so when it was
   not tried in a browser.

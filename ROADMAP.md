@@ -2,19 +2,10 @@
 
 Not built yet. Listed in the order they were asked for, not in priority order.
 
-Built so far: the browser version (localhost) and the desktop app (Tauri, never Electron).
+Built so far: the browser version (localhost), the desktop app (Tauri, never Electron), the
+fonts and colours panel, and printing to paper or PDF.
 Still open for the desktop app: packages for macOS and Windows, and removing the Node server
 once the browser version is no longer wanted.
-
-## Choose fonts and colours
-
-A settings panel to pick the body, heading and code fonts, the text size, and the paper, text,
-heading and accent colours. Presets: the current "study" look, a dark one, a plain white one.
-Saved in `~/.config/md-reader/config.json`.
-
-Already prepared: `public/study.css` defines every font and colour once, as CSS custom properties
-on `.sheet` (`--paper`, `--ink`, `--h1`, `--h2`, `--h3`, `--accent`, `--code-bg`, `--font-body`,
-`--font-head`, `--font-mono`, `--size-body`, ...). The panel only has to set those variables.
 
 ## Choose between continuous view and pages view
 
@@ -81,8 +72,3 @@ tablet) as an installable PWA, without the local server.
   such as GitHub Pages.
 - Private repositories need a sign-in; the token must never be in the page's code.
 - The `.md`-only rule stays: the hosted app lists and opens Markdown files only.
-
-## Print / export to PDF
-
-A print stylesheet with Letter pages and the PDF's margins, for the rare case a PDF is wanted
-again. `.diagram-block` already keeps a diagram with the paragraph that introduces it.

@@ -2,6 +2,7 @@
 // local server in a browser and Tauri commands in the desktop app. Markdown is rendered here.
 import { backend } from './backend.js';
 import { createRenderer } from './render.js';
+import { PRESETS, FONTS, SIZE, COLORS, DEFAULTS, normalize, variables, shownColor } from './settings.js';
 
 const render = createRenderer({
   MarkdownIt: window.markdownit,
@@ -344,6 +345,135 @@ function togglePanel(name) {
 $('mdr-toggle-sidebar').addEventListener('click', () => togglePanel('sidebar'));
 $('mdr-toggle-outline').addEventListener('click', () => togglePanel('outline'));
 
+// ---------- Fonts and colours ----------
+// A setting is only ever a CSS custom property on the sheet (study.css) or the page (app.css).
+
+let settings = normalize(null);
+let applied = [];
+let saveTimer = null;
+
+function applySettings() {
+  for (const [target, name] of applied) target.style.removeProperty(name);
+  applied = [];
+  const vars = variables(settings);
+  const page = document.documentElement;
+  page.style.colorScheme = vars.scheme;
+  for (const [name, value] of Object.entries(vars.sheet)) {
+    sheet.style.setProperty(name, value);
+    applied.push([sheet, name]);
+  }
+  for (const [name, value] of Object.entries(vars.ui)) {
+    page.style.setProperty(name, value);
+    applied.push([page, name]);
+  }
+  // The printed page is filled with the paper colour (see @media print in app.css).
+  page.style.setProperty('--print-paper', getComputedStyle(sheet).getPropertyValue('--paper').trim());
+  updateSpy();
+}
+
+function changeSettings(patch) {
+  settings = normalize({ ...settings, ...patch });
+  applySettings();
+  fillSettingsForm();
+  $('mdr-settings-error').textContent = '';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveSettingsNow, 400);
+}
+
+function saveSettingsNow() {
+  if (saveTimer === null) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  backend.saveSettings(settings).catch((err) => {
+    $('mdr-settings-error').textContent = `Not saved: ${err.message}`;
+  });
+}
+// A change made just before the window closes is still saved.
+window.addEventListener('pagehide', saveSettingsNow);
+
+function fillSelect(select, table) {
+  select.replaceChildren(...Object.entries(table).map(([value, { label }]) => el('option', { value, textContent: label })));
+}
+
+function fillSettingsForm() {
+  $('mdr-set-preset').value = settings.preset;
+  $('mdr-set-body').value = settings.body;
+  $('mdr-set-head').value = settings.head;
+  $('mdr-set-mono').value = settings.mono;
+  $('mdr-set-size').value = settings.size;
+  $('mdr-set-size-value').textContent = `${settings.size} pt`;
+  for (const name of Object.keys(COLORS)) {
+    $(`mdr-set-color-${name}`).value = shownColor(settings, name);
+    $(`mdr-set-color-${name}-reset`).hidden = !settings.colors[name];
+  }
+}
+
+function buildSettingsForm() {
+  fillSelect($('mdr-set-preset'), PRESETS);
+  fillSelect($('mdr-set-body'), FONTS.body);
+  fillSelect($('mdr-set-head'), FONTS.head);
+  fillSelect($('mdr-set-mono'), FONTS.mono);
+  Object.assign($('mdr-set-size'), { min: SIZE.min, max: SIZE.max, step: SIZE.step });
+  // Choosing a look starts from that look's own colours.
+  $('mdr-set-preset').addEventListener('change', (e) => changeSettings({ preset: e.target.value, colors: {} }));
+  for (const key of ['body', 'head', 'mono']) {
+    $(`mdr-set-${key}`).addEventListener('change', (e) => changeSettings({ [key]: e.target.value }));
+  }
+  $('mdr-set-size').addEventListener('input', (e) => changeSettings({ size: Number(e.target.value) }));
+  for (const [name, { label }] of Object.entries(COLORS)) {
+    const input = el('input', { type: 'color', id: `mdr-set-color-${name}` });
+    const reset = el('button', { type: 'button', className: 'btn', id: `mdr-set-color-${name}-reset`, textContent: 'Reset' });
+    input.addEventListener('input', () => changeSettings({ colors: { ...settings.colors, [name]: input.value } }));
+    reset.addEventListener('click', () => {
+      const colors = { ...settings.colors };
+      delete colors[name];
+      changeSettings({ colors });
+    });
+    $('mdr-set-colors').append(
+      el('label', { htmlFor: input.id, textContent: label }),
+      el('div', { className: 'settings-color' }, [input, reset]),
+    );
+  }
+  $('mdr-settings-open').addEventListener('click', () => {
+    fillSettingsForm();
+    $('mdr-settings').showModal();
+  });
+  $('mdr-settings-close').addEventListener('click', () => $('mdr-settings').close());
+  $('mdr-settings').addEventListener('close', saveSettingsNow);
+  $('mdr-settings-reset').addEventListener('click', () => changeSettings({ ...DEFAULTS, colors: {} }));
+  $('mdr-settings-form').addEventListener('submit', (event) => event.preventDefault());
+}
+
+async function loadSettings() {
+  try {
+    settings = normalize(await backend.getSettings());
+  } catch {
+    settings = normalize(null); // the study look
+  }
+  applySettings();
+}
+
+// ---------- Print ----------
+// Images load lazily, so the ones not scrolled to yet are fetched before the print dialog opens.
+
+async function printDoc() {
+  if (!state.current) return;
+  const images = [...sheet.querySelectorAll('img')];
+  for (const img of images) img.loading = 'eager';
+  const loaded = images
+    .filter((img) => !img.complete)
+    .map((img) => new Promise((resolve) => {
+      img.addEventListener('load', resolve, { once: true });
+      img.addEventListener('error', resolve, { once: true });
+    }));
+  await Promise.race([Promise.all(loaded), new Promise((resolve) => setTimeout(resolve, 5000))]);
+  window.print();
+}
+$('mdr-print').addEventListener('click', printDoc);
+window.addEventListener('beforeprint', () => {
+  for (const img of sheet.querySelectorAll('img')) img.loading = 'eager';
+});
+
 // ---------- Full screen ----------
 // Full screen with the app unchanged: panels and top bar stay. F, F11 or the button toggles it;
 // Esc leaves.
@@ -466,6 +596,8 @@ async function start() {
   if (store.get('no-sidebar', false) || window.innerWidth <= 760) app.classList.add('no-sidebar');
   if (store.get('no-outline', false)) app.classList.add('no-outline');
   setZoom(store.get('zoom', 1));
+  buildSettingsForm();
+  await loadSettings();
   try {
     await loadRoots();
   } catch (err) {

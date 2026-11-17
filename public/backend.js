@@ -9,6 +9,8 @@
 //   assetUrl(rootId, path)     -> URL of an image inside the folder
 //   watch(rootId, path, fn)    -> stop function; fn runs when the note changes on disk
 //   toggleFullscreen()
+//   getSettings()              -> the stored fonts-and-colours object (may be empty)
+//   saveSettings(settings)
 // Only over HTTP:   browse(dir) -> sub-folders, for the in-page "Add folder" dialog
 // Only on desktop:  pickFolder() -> path or null (native dialog), openExternal(url),
 //                   exitFullscreen()
@@ -42,6 +44,14 @@ function httpBackend() {
       events.onmessage = () => onChange();
       return () => events.close();
     },
+    getSettings: async () => (await api('/api/settings')).settings,
+    saveSettings: (settings) =>
+      api('/api/settings', {
+        method: 'PUT',
+        keepalive: true, // may be sent while the page is closing
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings }),
+      }),
     browse: (dir) => api(`/api/browse${dir ? `?dir=${enc(dir)}` : ''}`),
     async toggleFullscreen() {
       if (document.fullscreenElement) await document.exitFullscreen?.().catch(() => {});
@@ -81,6 +91,8 @@ function tauriBackend({ core, event }) {
         call('unwatch_doc', { root, path }).catch(() => {});
       };
     },
+    getSettings: () => call('get_settings'),
+    saveSettings: (settings) => call('save_settings', { settings }),
     pickFolder: () => call('pick_folder'),
     openExternal: (url) => call('open_external', { url }),
     toggleFullscreen: () => call('set_fullscreen', {}),

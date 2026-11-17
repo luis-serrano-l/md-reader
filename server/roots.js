@@ -11,6 +11,9 @@ export { DOC_EXTS, IMAGE_EXTS };
 const SKIP_DIRS = new Set(['node_modules']);
 const MAX_TREE_DEPTH = 8;
 const MAX_TREE_FILES = 5000;
+const MAX_SETTINGS_BYTES = 8 * 1024;
+
+const isPlainObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 
 export class GuardError extends Error {
   constructor(status, message) {
@@ -62,11 +65,40 @@ export class RootStore {
     }
   }
 
-  save() {
+  // The whole config file as it is on disk now, or {} when missing or unreadable.
+  readFile() {
+    try {
+      const data = JSON.parse(fs.readFileSync(this.file, 'utf8'));
+      return isPlainObject(data) ? data : {};
+    } catch {
+      return {};
+    }
+  }
+
+  // Writes one part of the config file and keeps the rest as it is on disk, so the browser
+  // version and the desktop app (which share the file) do not undo each other's changes.
+  write(part) {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
     const tmp = `${this.file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify({ roots: this.roots.map((r) => r.path) }, null, 2) + '\n');
+    fs.writeFileSync(tmp, JSON.stringify({ ...this.readFile(), ...part }, null, 2) + '\n');
     fs.renameSync(tmp, this.file);
+  }
+
+  save() {
+    this.write({ roots: this.roots.map((r) => r.path) });
+  }
+
+  // Fonts and colours. Stored as given; the page checks every value before using it
+  // (public/settings.js), so this only keeps the file small and well-formed.
+  getSettings() {
+    const { settings } = this.readFile();
+    return isPlainObject(settings) ? settings : {};
+  }
+
+  saveSettings(settings) {
+    if (!isPlainObject(settings)) throw new GuardError(400, 'Settings must be an object.');
+    if (JSON.stringify(settings).length > MAX_SETTINGS_BYTES) throw new GuardError(413, 'Settings are too large.');
+    this.write({ settings });
   }
 
   list() {
@@ -86,6 +118,7 @@ export class RootStore {
     if (typeof input !== 'string' || !input.trim() || input.includes('\0')) {
       throw new GuardError(400, 'Give the path of a folder.');
     }
+    this.load(); // the desktop app may have changed the list since it was read
     const wanted = expandHome(input.trim());
     if (!path.isAbsolute(wanted)) throw new GuardError(400, 'The path must be absolute (start with / or ~).');
     const real = realpathOr(wanted, 404, 'That folder does not exist.');
@@ -100,6 +133,7 @@ export class RootStore {
   }
 
   remove(id) {
+    this.load();
     const before = this.roots.length;
     this.roots = this.roots.filter((r) => r.id !== id);
     if (this.roots.length === before) throw new GuardError(404, 'Unknown folder.');

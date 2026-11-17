@@ -17,6 +17,7 @@ const STATIC = {
   '/study.css': ['study.css', 'text/css; charset=utf-8'],
   '/render.js': ['render.js', 'text/javascript; charset=utf-8'],
   '/backend.js': ['backend.js', 'text/javascript; charset=utf-8'],
+  '/settings.js': ['settings.js', 'text/javascript; charset=utf-8'],
   '/vendor/markdown-it.min.js': ['vendor/markdown-it.min.js', 'text/javascript; charset=utf-8'],
   '/vendor/markdown-it-task-lists.min.js': ['vendor/markdown-it-task-lists.min.js', 'text/javascript; charset=utf-8'],
   '/vendor/highlight.min.js': ['vendor/highlight.min.js', 'text/javascript; charset=utf-8'],
@@ -62,7 +63,9 @@ function readJsonBody(req) {
     });
     req.on('end', () => {
       try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+        if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('not an object');
+        resolve(body);
       } catch {
         reject(new GuardError(400, 'Invalid JSON.'));
       }
@@ -137,6 +140,14 @@ async function route(req, res, url, store) {
 
   if (pathname.startsWith('/api/roots/') && method === 'DELETE') {
     store.remove(decodeURIComponent(pathname.slice('/api/roots/'.length)));
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (pathname === '/api/settings' && method === 'GET') return sendJson(res, 200, { settings: store.getSettings() });
+
+  if (pathname === '/api/settings' && method === 'PUT') {
+    const body = await readJsonBody(req);
+    store.saveSettings(body.settings);
     return sendJson(res, 200, { ok: true });
   }
 

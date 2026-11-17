@@ -42,6 +42,8 @@ The desktop app and the browser version share the folder list.
 |---|---|
 | ☰ | Show or hide the folder list |
 | − 100% + | Zoom the note |
+| ⎙ | Print the note, or save it as a PDF from the print dialog |
+| ⚙ | Fonts and colours |
 | ⛶ or `F` | Full screen on or off (`Esc` also leaves; `F11` too in the desktop app) |
 | ≡ | Show or hide the outline |
 
@@ -64,6 +66,13 @@ desktop app, in your browser).
 
 ## The look
 
+The ⚙ button opens **Fonts and colours**: three looks (Study, Plain white, Dark), the fonts of
+the text, headings and code, the text size, and four colours (paper, text, headings, accent).
+The choice is saved with the folder list and shared by the browser version and the desktop app.
+
+Printing uses Letter pages with the study PDF's margins. A table row, a code block or a diagram
+with its lead-in paragraph is not cut in two when it fits on a page.
+
 `public/study.css` is a screen version of the stylesheet used for the study PDFs: warm paper,
 serif body text, blue sans-serif headings, striped tables, full-width diagrams. The note is one
 continuous sheet instead of separate pages. Every font and colour is a CSS variable at the top of
@@ -75,6 +84,7 @@ that file.
 |---|---|
 | `public/` | Front end: plain HTML, CSS and JavaScript, no build step |
 | `public/render.js` | Markdown to HTML, in the page |
+| `public/settings.js` | Fonts and colours: the looks, the font lists, checking of stored values |
 | `public/backend.js` | The one place that talks to the server or to the desktop app |
 | `public/vendor/` | Browser builds of markdown-it and highlight.js (`npm run vendor` refreshes them) |
 | `server/index.js` | Browser version: HTTP server, routes, request checks |
@@ -94,5 +104,5 @@ npm test                         # Node path guard and renderer
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md): font and colour settings, a pages view, single files and GitHub
-folders or files as sources, a hosted PWA version, and print to PDF.
+See [ROADMAP.md](ROADMAP.md): a pages view, single files and GitHub
+folders or files as sources, and a hosted PWA version.

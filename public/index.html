@@ -27,6 +27,8 @@
           <button type="button" class="zoom-value" id="mdr-zoom-reset" title="Back to 100%">100%</button>
           <button type="button" class="icon-btn" id="mdr-zoom-in" title="Larger" aria-label="Larger">+</button>
         </div>
+        <button type="button" class="icon-btn" id="mdr-print" title="Print or save as PDF" aria-label="Print">⎙</button>
+        <button type="button" class="icon-btn" id="mdr-settings-open" title="Fonts and colours" aria-label="Fonts and colours">⚙</button>
         <button type="button" class="icon-btn" id="mdr-fullscreen" title="Full screen on or off (F). Esc also leaves." aria-label="Full screen">⛶</button>
         <button type="button" class="icon-btn" id="mdr-toggle-outline" title="Show or hide the outline" aria-label="Show or hide the outline">≡</button>
       </header>
@@ -68,6 +70,38 @@
         <button type="button" class="btn primary" id="mdr-ask-ok">OK</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog class="picker settings" id="mdr-settings" aria-labelledby="mdr-settings-title">
+    <form method="dialog" class="picker-form" id="mdr-settings-form">
+      <h2 id="mdr-settings-title">Fonts and colours</h2>
+      <div class="settings-grid">
+        <label for="mdr-set-preset">Look</label>
+        <select id="mdr-set-preset"></select>
+      </div>
+      <h3>Fonts</h3>
+      <div class="settings-grid">
+        <label for="mdr-set-body">Text</label>
+        <select id="mdr-set-body"></select>
+        <label for="mdr-set-head">Headings</label>
+        <select id="mdr-set-head"></select>
+        <label for="mdr-set-mono">Code</label>
+        <select id="mdr-set-mono"></select>
+        <label for="mdr-set-size">Text size</label>
+        <div class="settings-size">
+          <input type="range" id="mdr-set-size">
+          <output id="mdr-set-size-value" for="mdr-set-size"></output>
+        </div>
+      </div>
+      <h3>Colours</h3>
+      <div class="settings-grid" id="mdr-set-colors"></div>
+      <p class="picker-error" id="mdr-settings-error" role="alert"></p>
+      <div class="picker-actions">
+        <span class="picker-count"></span>
+        <button type="button" class="btn" id="mdr-settings-reset">Back to the study look</button>
+        <button type="button" class="btn primary" id="mdr-settings-close">Done</button>
+      </div>
+    </form>
   </dialog>
 
   <script src="/vendor/markdown-it.min.js"></script>
