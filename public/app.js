@@ -49,14 +49,14 @@ function el(tag, props = {}, children = []) {
 
 const shortPath = (p) => p.replace(/^\/home\/[^/]+/, '~');
 
-// ---------- Folder list ----------
+// ---------- List of sources (folders and single files) ----------
 
 async function loadRoots() {
   state.roots = await backend.listRoots();
   const closed = new Set(store.get('closed', []));
   rootsEl.replaceChildren();
   if (!state.roots.length) {
-    rootsEl.append(el('p', { className: 'roots-empty', textContent: 'No folders yet. Add one to see its Markdown files here.' }));
+    rootsEl.append(el('p', { className: 'roots-empty', textContent: 'Nothing added yet. Add a folder or a file to see its Markdown notes here.' }));
     return;
   }
   await Promise.all(
@@ -65,7 +65,8 @@ async function loadRoots() {
       const details = el('details', { open: !closed.has(root.id) }, [
         el('summary', { title: root.path }, [
           el('span', { className: 'root-name', textContent: root.name }),
-          el('span', { className: 'root-path', textContent: shortPath(root.path) }),
+          ...(kindLabel(root) ? [el('span', { className: 'root-kind', textContent: kindLabel(root) })] : []),
+          el('span', { className: 'root-path', textContent: sourceLine(root) }),
         ]),
         body,
       ]);
@@ -78,9 +79,9 @@ async function loadRoots() {
         type: 'button',
         className: 'icon-btn root-remove',
         textContent: '×',
-        title: `Remove ${root.name} from md-reader (the files stay on disk)`,
+        title: `Remove ${root.name} from md-reader (nothing is deleted from where it came from)`,
       });
-      remove.setAttribute('aria-label', `Remove folder ${root.name}`);
+      remove.setAttribute('aria-label', `Remove ${root.name}`);
       remove.addEventListener('click', () => removeRoot(root));
       const wrap = el('div', { className: 'root' }, [details, remove]);
       wrap.dataset.root = root.id;
@@ -98,6 +99,11 @@ async function loadRoots() {
   rootsEl.append(...state.roots.map((r) => r.el));
   markActive();
 }
+
+// What kind of source an entry is, shown next to its name. A plain folder needs no label.
+const kindLabel = (root) => (root.github ? 'GitHub' : root.kind === 'file' ? 'file' : '');
+const sourceLine = (root) =>
+  root.github ? [root.github.repo, root.github.ref, root.github.sub].filter(Boolean).join(' · ') : shortPath(root.path);
 
 function renderTree(rootId, nodes) {
   const list = el('ul', { className: 'tree' });
@@ -142,12 +148,15 @@ function markActive() {
 }
 
 async function removeRoot(root) {
-  const yes = await ask(`Remove "${root.name}" from md-reader?`, 'The folder and its files stay on disk.', 'Remove');
+  const what = root.github
+    ? 'The downloaded copy is deleted. The repository on GitHub is not touched.'
+    : root.kind === 'file' ? 'The file stays on disk.' : 'The folder and its files stay on disk.';
+  const yes = await ask(`Remove "${root.name}" from md-reader?`, what, 'Remove');
   if (!yes) return;
   try {
     await backend.removeRoot(root.id);
   } catch (err) {
-    await ask('The folder could not be removed', err.message);
+    await ask('It could not be removed', err.message);
     return;
   }
   if (state.current?.root === root.id) {
@@ -192,9 +201,9 @@ function showNotice(title, text, { error = false, action } = {}) {
 
 function showWelcome() {
   if (!state.roots.length) {
-    const add = el('button', { type: 'button', className: 'btn primary', textContent: 'Add folder' });
-    add.addEventListener('click', openPicker);
-    showNotice('Choose a folder to read from', 'md-reader opens only the Markdown (.md) files inside the folders you add.', { action: add });
+    const add = el('button', { type: 'button', className: 'btn primary', textContent: 'Add…' });
+    add.addEventListener('click', () => $('mdr-sources').showModal());
+    showNotice('Choose what to read', 'md-reader opens only the Markdown (.md) files of the folders and files you add.', { action: add });
   } else showNotice('Pick a note', 'Choose a Markdown file from the list on the left.');
 }
 
@@ -245,8 +254,9 @@ async function openDoc(root, path, { push = false, hash = '', keepScroll = false
   notice.replaceChildren();
   document.title = `${doc.title} · md-reader`;
   const rootInfo = state.roots.find((r) => r.id === root);
-  crumb.replaceChildren(`${rootInfo ? rootInfo.name : ''} / `, el('b', { textContent: doc.path }));
-  crumb.title = rootInfo ? `${rootInfo.path}/${doc.path}` : doc.path;
+  // A single file is its own entry: its name is not repeated.
+  crumb.replaceChildren(rootInfo && rootInfo.kind !== 'file' ? `${rootInfo.name} / ` : '', el('b', { textContent: doc.path }));
+  crumb.title = !rootInfo ? doc.path : rootInfo.kind === 'file' ? rootInfo.path : `${rootInfo.path}/${doc.path}`;
   markActive();
   store.set('last', state.current);
 
@@ -661,7 +671,7 @@ document.addEventListener('keydown', (event) => {
   } else if (event.key === 'Escape') backend.exitFullscreen?.().catch(() => {}); // a browser leaves by itself
 });
 
-// ---------- Folder picker ----------
+// ---------- Adding a source ----------
 
 const picker = $('mdr-picker');
 const pickerInput = $('mdr-picker-input');
@@ -669,14 +679,33 @@ const pickerList = $('mdr-picker-list');
 const pickerError = $('mdr-picker-error');
 const pickerCount = $('mdr-picker-count');
 let pickerDir = null;
+let pickerFiles = false; // true while the picker is choosing one file instead of a folder
 
 const mdCount = (n) => (n === 1 ? '1 .md file' : `${n} .md files`);
+const isMd = (path) => /\.md$/i.test(path);
+
+// The kinds of source that can be added. Each `add` opens its own dialog.
+const SOURCES = [
+  { title: 'Folder on this computer', text: 'All the .md files in it, sub-folders included.', add: () => pickLocal(false) },
+  { title: 'One file on this computer', text: 'Only that .md file. The rest of its folder stays closed.', add: () => pickLocal(true) },
+];
+
+function buildSourceChoices() {
+  for (const source of SOURCES) {
+    const button = el('button', { type: 'button' }, [el('b', { textContent: source.title }), el('span', { textContent: source.text })]);
+    button.addEventListener('click', () => {
+      $('mdr-sources').close();
+      source.add();
+    });
+    $('mdr-source-choices').append(button);
+  }
+}
 
 async function browseTo(dir) {
   pickerError.textContent = '';
   let listing;
   try {
-    listing = await backend.browse(dir);
+    listing = await backend.browse(dir, pickerFiles);
   } catch (err) {
     pickerError.textContent = err.message;
     return false;
@@ -686,48 +715,68 @@ async function browseTo(dir) {
   $('mdr-picker-up').disabled = !listing.parent;
   pickerCount.textContent = `${mdCount(listing.md)} directly in this folder`;
   pickerList.replaceChildren();
-  if (!listing.dirs.length) pickerList.append(el('li', { className: 'empty', textContent: 'No sub-folders here.' }));
+  const files = pickerFiles ? listing.files || [] : [];
+  if (!listing.dirs.length && !files.length) {
+    pickerList.append(el('li', { className: 'empty', textContent: pickerFiles ? 'No sub-folders or .md files here.' : 'No sub-folders here.' }));
+  }
   for (const d of listing.dirs) {
     const button = el('button', { type: 'button' }, [
-      el('span', { textContent: d.name }),
+      el('span', { textContent: `${d.name}/` }),
       el('span', { className: 'count', textContent: d.md ? mdCount(d.md) : '' }),
     ]);
     button.addEventListener('click', () => browseTo(d.path));
+    pickerList.append(el('li', {}, [button]));
+  }
+  for (const f of files) {
+    const button = el('button', { type: 'button', className: 'is-file' }, [
+      el('span', { textContent: f.name }),
+      el('span', { className: 'count', textContent: 'add this file' }),
+    ]);
+    button.addEventListener('click', () => addFromPicker(f.path));
     pickerList.append(el('li', {}, [button]));
   }
   pickerList.scrollTop = 0;
   return true;
 }
 
-// Desktop app: the system's own folder dialog. Browser: the in-page folder browser.
-async function openPicker() {
-  if (backend.pickFolder) {
+// Desktop app: the system's own dialog. Browser: the in-page browser of folders (and .md files).
+async function pickLocal(file) {
+  const native = file ? backend.pickFile : backend.pickFolder;
+  if (native) {
     try {
-      const path = await backend.pickFolder();
-      if (path) await addRoot(path);
+      const path = await native();
+      if (path) await addLocal(path, file);
     } catch (err) {
-      await ask('The folder could not be added', err.message);
+      await ask(file ? 'The file could not be added' : 'The folder could not be added', err.message);
     }
     return;
   }
+  pickerFiles = file;
+  $('mdr-picker-title').textContent = file ? 'Add a file' : 'Add a folder';
+  $('mdr-picker-help').textContent = file
+    ? 'Pick one Markdown (.md) file. md-reader will open only that file, and the images it shows from its own folder.'
+    : 'md-reader can open only the Markdown (.md) files inside the folders you add here.';
+  pickerInput.setAttribute('aria-label', file ? 'Folder or file path' : 'Folder path');
+  $('mdr-picker-add').hidden = file;
   picker.showModal();
   await browseTo(store.get('picker-dir', null));
   if (!pickerDir) await browseTo(null);
   pickerInput.focus();
 }
 
-async function addRoot(path) {
-  const root = await backend.addRoot(path);
+async function addLocal(path, file) {
+  const root = await (file ? backend.addFile(path) : backend.addRoot(path));
   await loadRoots();
-  if (!state.current) showWelcome();
+  // The source is in the list from here on: a note that then fails to open says so itself.
+  if (file) await openDoc(root.id, root.name, { push: true }).catch(() => {});
+  else if (!state.current) showWelcome();
   return root;
 }
 
-async function addFromPicker() {
-  const typed = pickerInput.value.trim();
-  if (!typed) return;
+async function addFromPicker(path = pickerInput.value.trim()) {
+  if (!path) return;
   try {
-    const root = await addRoot(typed);
+    const root = await addLocal(path, pickerFiles);
     store.set('picker-dir', root.path.replace(/\/[^/]*$/, '') || '/');
     picker.close();
   } catch (err) {
@@ -735,16 +784,23 @@ async function addFromPicker() {
   }
 }
 
-$('mdr-add').addEventListener('click', openPicker);
+// A typed path: a folder is opened in the list; in file mode a .md path is added straight away.
+// (A folder may be named like a note, so the folder is tried first.)
+const goToTyped = async () => {
+  const typed = pickerInput.value.trim();
+  if (!(await browseTo(typed)) && pickerFiles && isMd(typed)) await addFromPicker(typed);
+};
+
+$('mdr-add').addEventListener('click', () => $('mdr-sources').showModal());
 $('mdr-picker-cancel').addEventListener('click', () => picker.close());
 $('mdr-picker-up').addEventListener('click', () => pickerDir?.parent && browseTo(pickerDir.parent));
-$('mdr-picker-go').addEventListener('click', () => browseTo(pickerInput.value.trim()));
-$('mdr-picker-add').addEventListener('click', addFromPicker);
+$('mdr-picker-go').addEventListener('click', goToTyped);
+$('mdr-picker-add').addEventListener('click', () => addFromPicker());
 $('mdr-picker-form').addEventListener('submit', (event) => event.preventDefault());
 pickerInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
     event.preventDefault();
-    browseTo(pickerInput.value.trim());
+    goToTyped();
   }
 });
 
@@ -770,6 +826,7 @@ async function start() {
   state.paged = store.get('view', 'continuous') === 'pages';
   $('mdr-view').setAttribute('aria-pressed', String(state.paged));
   buildSettingsForm();
+  buildSourceChoices();
   await loadSettings();
   try {
     await loadRoots();

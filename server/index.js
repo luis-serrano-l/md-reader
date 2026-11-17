@@ -135,7 +135,7 @@ async function route(req, res, url, store) {
 
   if (pathname === '/api/roots' && method === 'POST') {
     const body = await readJsonBody(req);
-    const root = store.add(body.path);
+    const root = body.kind === 'file' ? store.addFile(body.path) : store.add(body.path);
     return sendJson(res, 200, { root: store.list().find((r) => r.id === root.id) });
   }
 
@@ -152,7 +152,7 @@ async function route(req, res, url, store) {
     return sendJson(res, 200, { ok: true });
   }
 
-  if (pathname === '/api/browse' && method === 'GET') return sendJson(res, 200, browse(q.get('dir')));
+  if (pathname === '/api/browse' && method === 'GET') return sendJson(res, 200, browse(q.get('dir'), q.get('files') === '1'));
 
   if (pathname === '/api/tree' && method === 'GET') return sendJson(res, 200, store.tree(q.get('root')));
 

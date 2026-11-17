@@ -59,6 +59,11 @@ fn add_root(state: State<'_, AppState>, path: String) -> CommandResult<RootInfo>
 }
 
 #[tauri::command]
+fn add_file(state: State<'_, AppState>, path: String) -> CommandResult<RootInfo> {
+    state.store.lock().unwrap().add_file(&path, None).map_err(message)
+}
+
+#[tauri::command]
 fn remove_root(state: State<'_, AppState>, id: String) -> CommandResult<()> {
     state.store.lock().unwrap().remove(&id).map_err(message)?;
     // Stop watching a note of the folder that was just removed.
@@ -143,6 +148,18 @@ async fn pick_folder(app: AppHandle) -> Option<String> {
         .map(|path| path.to_string_lossy().into_owned())
 }
 
+/// The system's file dialog, limited to Markdown. Returns the chosen file, or nothing.
+#[tauri::command]
+async fn pick_file(app: AppHandle) -> Option<String> {
+    app.dialog()
+        .file()
+        .set_title("Add a Markdown file to md-reader")
+        .add_filter("Markdown", &["md"])
+        .blocking_pick_file()
+        .and_then(|file| file.into_path().ok())
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
 /// Opens a web or mail link from a note in the system's default program.
 #[tauri::command]
 fn open_external(app: AppHandle, url: String) -> CommandResult<()> {
@@ -220,6 +237,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_roots,
             add_root,
+            add_file,
             remove_root,
             tree,
             get_settings,
@@ -228,6 +246,7 @@ pub fn run() {
             watch_doc,
             unwatch_doc,
             pick_folder,
+            pick_file,
             open_external,
             set_fullscreen
         ])

@@ -1,5 +1,9 @@
-// The allowed-folder list and the path guard. Every route that touches the disk goes through
+// The list of allowed sources and the path guard. Every route that touches the disk goes through
 // RootStore.resolveInside(), which is the only place that turns a request into a file path.
+//
+// A source is a folder (all its .md files) or a single .md file. In the config file a plain
+// folder is a string; anything else is { path, kind: 'folder' | 'file', github? }, where
+// `github` describes the repository a downloaded copy came from (server/github.js).
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -58,8 +62,8 @@ export class RootStore {
       const data = JSON.parse(fs.readFileSync(this.file, 'utf8'));
       const seen = new Set();
       this.roots = (Array.isArray(data.roots) ? data.roots : [])
-        .filter((p) => typeof p === 'string' && path.isAbsolute(p) && !seen.has(p) && seen.add(p))
-        .map((p) => ({ id: rootId(p), path: p }));
+        .map(readEntry)
+        .filter((r) => r && !seen.has(r.path) && seen.add(r.path));
     } catch {
       this.roots = [];
     }
@@ -85,7 +89,7 @@ export class RootStore {
   }
 
   save() {
-    this.write({ roots: this.roots.map((r) => r.path) });
+    this.write({ roots: this.roots.map(writeEntry) });
   }
 
   // Fonts and colours. Stored as given; the page checks every value before using it
@@ -106,7 +110,9 @@ export class RootStore {
       id: r.id,
       path: r.path,
       name: path.basename(r.path) || r.path,
-      missing: !isDirectory(r.path),
+      kind: r.kind,
+      github: r.github ? { repo: r.github.repo, ref: r.github.ref, sub: r.github.sub } : null,
+      missing: r.kind === 'file' ? !isFile(r.path) : !isDirectory(r.path),
     }));
   }
 
@@ -124,36 +130,75 @@ export class RootStore {
     const real = realpathOr(wanted, 404, 'That folder does not exist.');
     if (!isDirectory(real)) throw new GuardError(400, 'That path is a file, not a folder.');
     if (real === path.parse(real).root) throw new GuardError(400, 'The whole disk cannot be added. Pick a folder.');
-    const existing = this.roots.find((r) => r.path === real);
+    return this.put({ id: rootId(real), path: real, kind: 'folder' });
+  }
+
+  // One .md file. Only that file can be opened, plus images in its own folder or below.
+  addFile(input, github) {
+    if (typeof input !== 'string' || !input.trim() || input.includes('\0')) {
+      throw new GuardError(400, 'Give the path of a Markdown file.');
+    }
+    this.load();
+    const wanted = expandHome(input.trim());
+    if (!path.isAbsolute(wanted)) throw new GuardError(400, 'The path must be absolute (start with / or ~).');
+    const real = realpathOr(wanted, 404, 'That file does not exist.');
+    if (!isFile(real)) throw new GuardError(400, 'That path is not a file.');
+    if (!DOC_EXTS.has(path.extname(real).toLowerCase())) throw new GuardError(403, 'Only Markdown (.md) files can be added.');
+    return this.put({ id: rootId(real), path: real, kind: 'file', ...(github ? { github } : {}) });
+  }
+
+  // A downloaded copy of a GitHub folder (server/github.js made it and says where it is).
+  addGithubFolder(dir, github) {
+    this.load();
+    const real = realpathOr(dir, 404, 'That folder does not exist.');
+    if (!isDirectory(real)) throw new GuardError(400, 'That path is a file, not a folder.');
+    return this.put({ id: rootId(real), path: real, kind: 'folder', github });
+  }
+
+  put(root) {
+    const existing = this.roots.find((r) => r.path === root.path);
     if (existing) return existing;
-    const root = { id: rootId(real), path: real };
     this.roots.push(root);
     this.save();
     return root;
   }
 
+  // Returns the entry that was removed.
   remove(id) {
     this.load();
-    const before = this.roots.length;
+    const removed = this.get(id);
+    if (!removed) throw new GuardError(404, 'Unknown folder.');
     this.roots = this.roots.filter((r) => r.id !== id);
-    if (this.roots.length === before) throw new GuardError(404, 'Unknown folder.');
     this.save();
+    return removed;
   }
 
   // Turns (root id, relative path) into a real file path, or throws. Rules, in order:
   // the root must be configured; the extension must be allowed; the real path (symlinks
   // resolved) must stay inside the real root; the real file's extension must be allowed too.
+  // For a single-file source the "root" is the file's folder, and the only .md file that can
+  // be opened is the file itself.
   resolveInside(id, rel, exts) {
     const root = this.get(id);
     if (!root) throw new GuardError(404, 'Unknown folder.');
     if (typeof rel !== 'string' || !rel || rel.includes('\0')) throw new GuardError(400, 'Missing path.');
     if (!exts.has(path.extname(rel).toLowerCase())) throw new GuardError(403, 'This file type cannot be opened.');
-    const rootReal = realpathOr(root.path, 404, 'The folder no longer exists.');
+    const single = root.kind === 'file';
+    const sourceReal = realpathOr(root.path, 404, single ? 'The file no longer exists.' : 'The folder no longer exists.');
+    const rootReal = single ? path.dirname(sourceReal) : sourceReal;
+    // A file kept directly in the home folder or at the top of the disk must not open every
+    // image below it: for such a file only the note itself is served.
+    if (single && !DOC_EXTS.has(path.extname(rel).toLowerCase()) && tooBroad(rootReal)) {
+      throw new GuardError(403, 'Images are not shown for a file kept directly in the home folder.');
+    }
     const candidate = path.resolve(rootReal, rel);
     if (!isInside(rootReal, candidate)) throw new GuardError(403, 'Path is outside the folder.');
     const real = realpathOr(candidate, 404, 'File not found.');
     if (!isInside(rootReal, real)) throw new GuardError(403, 'Path is outside the folder.');
     if (!exts.has(path.extname(real).toLowerCase())) throw new GuardError(403, 'This file type cannot be opened.');
+    if (single && DOC_EXTS.has(path.extname(real).toLowerCase()) && real !== sourceReal) {
+      throw new GuardError(403, 'Only the file that was added can be opened.');
+    }
     let stat;
     try {
       stat = fs.statSync(real);
@@ -168,6 +213,11 @@ export class RootStore {
   tree(id) {
     const root = this.get(id);
     if (!root) throw new GuardError(404, 'Unknown folder.');
+    if (root.kind === 'file') {
+      if (!isFile(root.path)) throw new GuardError(404, 'The file no longer exists.');
+      const name = path.basename(root.path);
+      return { nodes: [{ type: 'file', name, path: name }], truncated: false };
+    }
     if (!isDirectory(root.path)) throw new GuardError(404, 'The folder no longer exists.');
     const budget = { left: MAX_TREE_FILES };
     return { nodes: walk(root.path, '', 0, budget), truncated: budget.left <= 0 };
@@ -176,6 +226,32 @@ export class RootStore {
 
 function rootId(p) {
   return crypto.createHash('sha1').update(p).digest('hex').slice(0, 12);
+}
+
+// One entry of "roots" in the config file -> a source, or null when it is not valid.
+function readEntry(entry) {
+  if (typeof entry === 'string') return path.isAbsolute(entry) ? { id: rootId(entry), path: entry, kind: 'folder' } : null;
+  if (!isPlainObject(entry) || typeof entry.path !== 'string' || !path.isAbsolute(entry.path)) return null;
+  if (entry.kind !== 'folder' && entry.kind !== 'file') return null;
+  const root = { id: rootId(entry.path), path: entry.path, kind: entry.kind };
+  const g = entry.github;
+  if (isPlainObject(g) && [g.repo, g.ref, g.sub, g.dir].every((v) => typeof v === 'string') && path.isAbsolute(g.dir)) {
+    root.github = { repo: g.repo, ref: g.ref, sub: g.sub, dir: g.dir };
+  }
+  return root;
+}
+
+function writeEntry(root) {
+  if (root.kind === 'folder' && !root.github) return root.path;
+  return { path: root.path, kind: root.kind, ...(root.github ? { github: root.github } : {}) };
+}
+
+function isFile(p) {
+  try {
+    return fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function isDirectory(p) {
@@ -215,18 +291,38 @@ function walk(abs, rel, depth, budget) {
   return [...dirs.sort(byName), ...files.sort(byName)];
 }
 
-// Directory listing for the "Add folder" dialog: sub-folders only, never file names or contents.
-export function browse(input) {
+// True for a folder that is too much to open as a side effect of adding one file in it: the
+// top of the disk and the home folder.
+export function tooBroad(dir, home = os.homedir()) {
+  let homeReal = home;
+  try {
+    homeReal = fs.realpathSync(home);
+  } catch {
+    /* compared as given */
+  }
+  return dir === path.parse(dir).root || dir === homeReal;
+}
+
+// Directory listing for the "Add folder" and "Add file" dialogs: sub-folders, and with
+// `withFiles` the names of the .md files in the folder. Never other file names, never contents.
+export function browse(input, withFiles = false) {
   const wanted = input ? expandHome(String(input)) : os.homedir();
   if (wanted.includes('\0') || !path.isAbsolute(wanted)) throw new GuardError(400, 'The path must be absolute.');
   const dir = realpathOr(wanted, 404, 'That folder does not exist.');
   if (!isDirectory(dir)) throw new GuardError(400, 'That path is not a folder.');
-  const countMd = (d) =>
-    readDir(d).filter((e) => e.isFile() && DOC_EXTS.has(path.extname(e.name).toLowerCase())).length;
-  const dirs = readDir(dir)
+  const isMd = (e) => e.isFile() && DOC_EXTS.has(path.extname(e.name).toLowerCase());
+  const countMd = (d) => readDir(d).filter(isMd).length;
+  const entries = readDir(dir);
+  const dirs = entries
     .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !SKIP_DIRS.has(e.name))
     .sort(byName)
     .map((e) => ({ name: e.name, path: path.join(dir, e.name), md: countMd(path.join(dir, e.name)) }));
   const parent = path.dirname(dir);
-  return { dir, parent: parent === dir ? null : parent, md: countMd(dir), dirs };
+  const files = withFiles
+    ? entries
+        .filter((e) => isMd(e) && !e.name.startsWith('.'))
+        .sort(byName)
+        .map((e) => ({ name: e.name, path: path.join(dir, e.name) }))
+    : [];
+  return { dir, parent: parent === dir ? null : parent, md: entries.filter(isMd).length, dirs, files };
 }

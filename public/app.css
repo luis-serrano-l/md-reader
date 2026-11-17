@@ -133,6 +133,15 @@ details[open] > summary::before { content: "▾"; }
 .picker-list button:hover { background: var(--ui-bg); }
 .picker-list .count { color: var(--ui-muted); white-space: nowrap; }
 .picker-list .empty { color: var(--ui-muted); padding: 8px; }
+.picker-list .is-file { color: var(--ui-head); }
+.source-choices { display: flex; flex-direction: column; gap: 6px; }
+.source-choices button { display: block; width: 100%; text-align: left; font: inherit; padding: 9px 12px; cursor: pointer;
+                         border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-field); color: var(--ui-ink); }
+.source-choices button:hover { background: var(--ui-bg-2); }
+.source-choices b { display: block; color: var(--ui-head); }
+.source-choices span { color: var(--ui-muted); font-size: 12.5px; }
+.root-kind { margin-left: 6px; padding: 0 5px; border: 1px solid var(--ui-line); border-radius: 4px; color: var(--ui-muted);
+             font-size: 10.5px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.05em; vertical-align: 1px; }
 .picker-error { margin: 0; color: var(--danger); min-height: 1.2em; }
 .picker-actions { display: flex; align-items: center; gap: 8px; }
 .picker-count { flex: 1; color: var(--ui-muted); }

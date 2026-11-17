@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { RootStore, GuardError, DOC_EXTS, IMAGE_EXTS, browse } from '../server/roots.js';
+import { RootStore, GuardError, DOC_EXTS, IMAGE_EXTS, browse, tooBroad } from '../server/roots.js';
 
 function fixture() {
   const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'mdr-')));
@@ -105,4 +105,68 @@ test('browse lists sub-folders only', () => {
   assert.deepEqual(listing.dirs.map((d) => d.name), ['diagrams', 'empty', 'sub']);
   assert.equal(listing.md, 2);
   assert.equal(listing.dirs.find((d) => d.name === 'sub').md, 1);
+});
+
+test('a single file: only that file opens, plus images in its folder or below', () => {
+  const { base, root, store } = fixture();
+  const { id } = store.addFile(path.join(root, 'a.md'));
+  assert.equal(store.list().find((r) => r.id === id).kind, 'file');
+  assert.equal(store.resolveInside(id, 'a.md', DOC_EXTS).file, path.join(root, 'a.md'));
+  assert.deepEqual(store.tree(id).nodes, [{ type: 'file', name: 'a.md', path: 'a.md' }]);
+  // Other notes of the same folder stay closed, by name, by sub-folder and by symlink.
+  assert.throws(() => store.resolveInside(id, 'B.MD', DOC_EXTS), status(403));
+  assert.throws(() => store.resolveInside(id, 'sub/c.md', DOC_EXTS), status(403));
+  assert.throws(() => store.resolveInside(id, 'escape.md', DOC_EXTS), status(403));
+  assert.throws(() => store.resolveInside(id, '../secret.md', DOC_EXTS), status(403));
+  // Images: its own folder or below, never above.
+  assert.equal(store.resolveInside(id, 'diagrams/d.svg', IMAGE_EXTS).rel, 'diagrams/d.svg');
+  assert.throws(() => store.resolveInside(id, '../x.svg', IMAGE_EXTS), status(403));
+  assert.throws(() => store.resolveInside(id, 'a.pdf', IMAGE_EXTS), status(403));
+  // A symlink added as the file is followed once, when it is added.
+  const viaLink = store.addFile(path.join(root, 'escape.md'));
+  assert.equal(viaLink.path, path.join(base, 'secret.md'));
+  assert.throws(() => store.resolveInside(viaLink.id, 'secret.txt', DOC_EXTS), status(403));
+});
+
+test('a file in the home folder or at the top of the disk opens no images', () => {
+  const { root, store } = fixture();
+  assert.equal(tooBroad('/'), true);
+  assert.equal(tooBroad(root, root), true);
+  assert.equal(tooBroad(path.join(root, 'sub'), root), false);
+  const home = process.env.HOME;
+  process.env.HOME = root; // os.homedir() reads it
+  try {
+    const { id } = store.addFile(path.join(root, 'a.md'));
+    assert.equal(store.resolveInside(id, 'a.md', DOC_EXTS).rel, 'a.md');
+    assert.throws(() => store.resolveInside(id, 'diagrams/d.svg', IMAGE_EXTS), status(403));
+  } finally {
+    process.env.HOME = home;
+  }
+});
+
+test('addFile refuses folders, other file types and missing files', () => {
+  const { root, store } = fixture();
+  assert.throws(() => store.addFile(root), status(400));
+  assert.throws(() => store.addFile(path.join(root, 'a.pdf')), status(403));
+  assert.throws(() => store.addFile(path.join(root, 'disguised.md')), status(403));
+  assert.throws(() => store.addFile(path.join(root, 'nope.md')), status(404));
+  assert.throws(() => store.addFile('a.md'), status(400));
+});
+
+test('folders and single files are kept together in the config file', () => {
+  const { base, root, store, id } = fixture();
+  const file = store.addFile(path.join(root, 'sub', 'c.md'));
+  const saved = JSON.parse(fs.readFileSync(path.join(base, 'config', 'config.json'), 'utf8')).roots;
+  assert.deepEqual(saved, [root, { path: path.join(root, 'sub', 'c.md'), kind: 'file' }]);
+  const reloaded = new RootStore(path.join(base, 'config', 'config.json'));
+  assert.deepEqual(reloaded.list().map((r) => r.kind), ['folder', 'file']);
+  reloaded.remove(id);
+  assert.throws(() => reloaded.resolveInside(id, 'a.md', DOC_EXTS), status(404));
+  assert.equal(reloaded.resolveInside(file.id, 'c.md', DOC_EXTS).rel, 'c.md');
+});
+
+test('browse lists .md file names only when asked', () => {
+  const { root } = fixture();
+  assert.deepEqual(browse(root).files, []);
+  assert.deepEqual(browse(root, true).files.map((f) => f.name), ['a.md', 'B.MD']);
 });

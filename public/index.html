@@ -10,10 +10,10 @@
 </head>
 <body>
   <div class="app" id="mdr-app">
-    <aside class="sidebar" id="mdr-sidebar" aria-label="Folders">
+    <aside class="sidebar" id="mdr-sidebar" aria-label="Sources">
       <div class="sidebar-head">
         <span class="brand">md-reader</span>
-        <button type="button" class="btn primary" id="mdr-add">Add folder</button>
+        <button type="button" class="btn primary" id="mdr-add">Add…</button>
       </div>
       <nav class="roots" id="mdr-roots"></nav>
     </aside>
@@ -43,10 +43,22 @@
     <aside class="outline" id="mdr-outline" aria-label="Outline"></aside>
   </div>
 
+  <dialog class="picker ask" id="mdr-sources" aria-labelledby="mdr-sources-title">
+    <form method="dialog" class="picker-form">
+      <h2 id="mdr-sources-title">Add notes to read</h2>
+      <p class="picker-help">md-reader opens only the Markdown (.md) files of what you add here.</p>
+      <div class="source-choices" id="mdr-source-choices"></div>
+      <div class="picker-actions">
+        <span class="picker-count"></span>
+        <button type="submit" class="btn">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog class="picker" id="mdr-picker" aria-labelledby="mdr-picker-title">
     <form method="dialog" class="picker-form" id="mdr-picker-form">
       <h2 id="mdr-picker-title">Add a folder</h2>
-      <p class="picker-help">md-reader can open only the Markdown (.md) files inside the folders you add here.</p>
+      <p class="picker-help" id="mdr-picker-help"></p>
       <div class="picker-path">
         <button type="button" class="btn" id="mdr-picker-up" title="Go to the parent folder">Up</button>
         <input type="text" id="mdr-picker-input" spellcheck="false" autocomplete="off" aria-label="Folder path">
