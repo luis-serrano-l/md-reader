@@ -1,6 +1,5 @@
 //! GitHub sources: a folder or one `.md` file of a repository, downloaded with `git` into the
 //! app's own data folder and then read like any local source (same path guard, `.md` only).
-//! The Rust twin of `server/github.js`: same rules, same places on disk, same tests.
 //!
 //! - The copy is read-only from the app's side: it is cloned, fetched and reset, never
 //!   committed to or pushed.
@@ -176,7 +175,7 @@ fn clone_dir(spec: &Spec) -> PathBuf {
     repos_dir().join(&spec.owner).join(&spec.repo).join(format!("{:010x}", hash & 0xff_ffff_ffff))
 }
 
-/// True for a folder that this module (or its Node twin) made: three levels below `repos/`.
+/// True for a folder that this module made: three levels below `repos/`.
 fn is_clone_dir(dir: &Path) -> bool {
     let Ok(rel) = dir.strip_prefix(repos_dir()) else { return false };
     let parts: Vec<Component> = rel.components().collect();
@@ -547,7 +546,7 @@ mod tests {
     }
 
     #[test]
-    fn the_download_folder_is_named_the_same_way_as_in_the_browser_version() {
+    fn the_download_folder_keeps_its_name_across_versions() {
         let dir = clone_dir(&spec("octo", "notes", "main", "docs", SourceKind::Folder));
         assert_eq!(dir, repos_dir().join("octo").join("notes").join("22f63808a1"));
     }

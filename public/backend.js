@@ -1,6 +1,6 @@
-// The one place the front end talks to whatever holds the notes. Three implementations with
-// the same methods: the local Node server (over HTTP), the desktop app (Tauri commands) and the
-// hosted version (web-backend.js: GitHub only, no disk, so no addRoot/addFile/browse there).
+// The one place the front end talks to whatever holds the notes. Two implementations with the
+// same methods: the desktop app (Tauri commands) and the web version (web-backend.js: GitHub
+// only, no disk, so no addRoot/addFile there).
 //
 //   listRoots()                -> [{ id, path, name, kind: 'folder' | 'file', github, missing }]
 //   addRoot(path)              -> root (a folder)
@@ -17,54 +17,10 @@
 //   toggleFullscreen()
 //   getSettings()              -> the stored fonts-and-colours object (may be empty)
 //   saveSettings(settings)
-// Only over HTTP:   browse(dir, files) -> sub-folders (and .md file names), for the in-page picker
 // Only on desktop:  pickFolder(), pickFile() -> path or null (native dialog), openExternal(url),
 //                   exitFullscreen()
 
-import { webBackend, toggleBrowserFullscreen } from './web-backend.js';
-
-const enc = encodeURIComponent;
-
-function httpBackend() {
-  async function api(url, options) {
-    const res = await fetch(url, options);
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
-    return body;
-  }
-  const send = (url, method, body) =>
-    api(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  return {
-    kind: 'http',
-    listRoots: async () => (await api('/api/roots')).roots,
-    addRoot: async (path) => (await send('/api/roots', 'POST', { path })).root,
-    addFile: async (path) => (await send('/api/roots', 'POST', { path, kind: 'file' })).root,
-    addGithub: async (url) => (await send('/api/github', 'POST', { url })).root,
-    updateGithub: (root) => send('/api/github/update', 'POST', { root }),
-    githubToken: async () => (await api('/api/github/token')).saved,
-    saveGithubToken: (token) => send('/api/github/token', 'PUT', { token }),
-    clearGithubToken: () => api('/api/github/token', { method: 'DELETE' }),
-    removeRoot: (id) => api(`/api/roots/${enc(id)}`, { method: 'DELETE' }),
-    tree: (root) => api(`/api/tree?root=${enc(root)}`),
-    readDoc: (root, path) => api(`/api/doc?root=${enc(root)}&path=${enc(path)}`),
-    assetUrl: (root, path) => `/asset?root=${enc(root)}&path=${enc(path)}`,
-    watch(root, path, onChange) {
-      const events = new EventSource(`/api/watch?root=${enc(root)}&path=${enc(path)}`);
-      events.onmessage = () => onChange();
-      return () => events.close();
-    },
-    getSettings: async () => (await api('/api/settings')).settings,
-    saveSettings: (settings) =>
-      api('/api/settings', {
-        method: 'PUT',
-        keepalive: true, // may be sent while the page is closing
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings }),
-      }),
-    browse: (dir, files = false) => api(`/api/browse?files=${files ? 1 : 0}${dir ? `&dir=${enc(dir)}` : ''}`),
-    toggleFullscreen: toggleBrowserFullscreen,
-  };
-}
+import { webBackend } from './web-backend.js';
 
 function tauriBackend({ core, event }) {
   async function call(command, args) {
@@ -113,12 +69,5 @@ function tauriBackend({ core, event }) {
   };
 }
 
-// The local server only ever answers on a loopback name. Any other address is the hosted
-// version: a static site with no server behind it (web-backend.js).
-const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
-
-export const backend = window.__TAURI__
-  ? tauriBackend(window.__TAURI__)
-  : LOOPBACK.has(location.hostname)
-    ? httpBackend()
-    : webBackend();
+// Outside the desktop app the page is the web version: a static site with no server behind it.
+export const backend = window.__TAURI__ ? tauriBackend(window.__TAURI__) : webBackend();

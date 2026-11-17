@@ -2,7 +2,7 @@
 // .svg images get class "diagram" and are kept together with the paragraph that introduces them.
 // Raw HTML in the Markdown is not rendered (html: false), so a note cannot inject script.
 //
-// This file runs in the browser (localhost and desktop app) and in Node (tests). It imports
+// This file runs in the browser (web version and desktop app) and in Node (tests). It imports
 // nothing: the Markdown libraries are passed in, and the caller says how a file inside the
 // folder becomes a URL.
 

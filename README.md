@@ -2,18 +2,17 @@
 
 Read Markdown notes with the look of a typeset study PDF, without building the PDF. You choose
 what the app may read (folders, single files, GitHub repositories), and it opens `.md` files
-only. It runs as a desktop app (Tauri), in the browser on localhost, or as a hosted page that
-installs as a PWA; all three show the same front end.
+only. It runs as a desktop app (Tauri) or as a web page that installs as an app (PWA); both
+show the same front end.
 
 | Version | Where it runs | What it can read | Start |
 |---|---|---|---|
-| Hosted (PWA) | Any browser, phone or tablet | GitHub repositories | Open <https://luis-serrano-l.github.io/md-reader/> |
-| Browser | This computer, on localhost | Local folders and files, GitHub | `npm start` |
+| Web (PWA) | Any browser, phone or tablet | GitHub repositories | Open <https://luis-serrano-l.github.io/md-reader/> |
 | Desktop app | Linux (Tauri) | Local folders and files, GitHub | `npm run desktop` |
 
-Contents: [iPad or phone](#on-an-ipad-or-phone) · [Browser](#run-in-the-browser) ·
+Contents: [iPad or phone](#on-an-ipad-or-phone) ·
 [Desktop](#run-as-a-desktop-app) · [Use](#use) · [GitHub sources](#github-sources) ·
-[What the app can read](#what-the-app-can-read) · [Hosted version](#hosted-version-pwa) ·
+[What the app can read](#what-the-app-can-read) · [Web version](#web-version-pwa) ·
 [The look](#the-look) · [Layout](#layout) · [Test](#test) · [License](#license)
 
 ## On an iPad or phone
@@ -32,20 +31,11 @@ Nothing to install from a store, nothing to pay.
 
 Notes that were opened once can be read again without a network. **↻** fetches new versions.
 
-## Run in the browser
-
-Needs Node 20 or newer. Nothing to install: the server uses only Node's own modules.
-
-```sh
-npm start          # http://localhost:4747
-```
-
-Use another port with `PORT=4748 npm start`.
-
 ## Run as a desktop app
 
 Needs Rust and, on Linux, the WebKitGTK development packages
-(`libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev`). No Node process runs in the desktop app.
+(`libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev`), plus Node 20 or newer for the build tool
+only: no Node process runs in the app.
 
 ```sh
 npm install              # the Tauri command-line tool
@@ -57,8 +47,6 @@ The release build writes the program to `src-tauri/target/release/md-reader` and
 `src-tauri/target/release/bundle/deb/md-reader_0.1.0_amd64.deb` (about 2 MB). Install it with
 `sudo apt install ./src-tauri/target/release/bundle/deb/md-reader_0.1.0_amd64.deb`.
 
-The desktop app and the browser version share the list of sources.
-
 ## Use
 
 1. Click **Add…** and pick a kind of source. Any mix of them can be in the list at once.
@@ -69,8 +57,8 @@ The desktop app and the browser version share the list of sources.
    | One file on this computer | Only that `.md` file; the rest of its folder stays closed |
    | From GitHub | A repository, a folder in it, or one `.md` file, downloaded to read |
 
-   For a folder or file, the desktop app opens the system's dialog; in the browser, browse to
-   it or paste its path and press Go.
+   Folders and files on this computer are for the desktop app, which opens the system's
+   dialog. The web version offers GitHub only.
 2. Click a note to read it.
 3. Remove a source with the **×** next to its name. Local files stay on disk; for a GitHub
    source the downloaded copy is deleted and the repository is not touched.
@@ -122,14 +110,11 @@ desktop app, in your browser).
 - Paths with `..` and symlinks that lead outside an added folder are refused. A GitHub source
   never reads outside its downloaded copy, whatever links the repository holds.
 - Raw HTML inside a note is shown as text, not run.
-- Browser version: the server listens on `127.0.0.1` only and refuses requests that come from
-  other sites.
 - Desktop app: the page can call only the app's own commands; it has no general file access.
 
-## Hosted version (PWA)
+## Web version (PWA)
 
-`public/` is also a complete static site. Served from any address that is not this computer,
-the page runs without a server: sources are GitHub repositories only, read through GitHub's API,
+`public/` is a complete static site. Opened in a browser, the page runs without a server: sources are GitHub repositories only, read through GitHub's API,
 and the page installs as an app on a phone or tablet.
 
 - **Published** at <https://luis-serrano-l.github.io/md-reader/> by
@@ -153,9 +138,7 @@ and the page installs as an app on a phone or tablet.
 
 The ⚙ button opens **View, fonts and colours**: continuous or pages view, three looks (Study,
 Plain white, Dark with true black for OLED screens), the fonts of the text, headings and code,
-the text size, and four colours (paper, text, headings, accent). Looks, fonts and colours are
-saved with the list of sources and shared by the browser version and the desktop app; the view
-is remembered by each of them separately.
+the text size, and four colours (paper, text, headings, accent). Everything is remembered.
 
 On a tablet held upright or a phone, the list of sources lies over the note and a tap on the
 note puts it away; the page margins shrink so the text keeps its width.
@@ -181,17 +164,14 @@ remembered, and switching keeps the place being read.
 | `public/render.js` | Markdown to HTML, in the page |
 | `public/pages.js` | Pages view: cuts the rendered note into Letter pages |
 | `public/settings.js` | Fonts and colours: the looks, the font lists, checking of stored values |
-| `public/backend.js` | The one place that talks to the server, the desktop app or GitHub |
-| `public/web-backend.js`, `sw.js`, `manifest.webmanifest`, `icons/` | Hosted version: GitHub reader, offline cache, install data |
-| `public/github-url.js` | Reads a GitHub address (shared by the server and the hosted version) |
+| `public/backend.js` | The one place that talks to the desktop app or to GitHub |
+| `public/web-backend.js`, `sw.js`, `manifest.webmanifest`, `icons/` | Web version: GitHub reader, offline cache, install data |
+| `public/github-url.js` | Reads a GitHub address (web version; the desktop app has the same rules in Rust) |
 | `public/vendor/` | Browser builds of markdown-it and highlight.js (`npm run vendor` refreshes them) |
-| `server/index.js` | Browser version: HTTP server, routes, request checks |
-| `server/roots.js` | Browser version: list of sources and the path guard |
-| `server/github.js` | Browser version: download and update with `git`, the saved token |
 | `src-tauri/src/lib.rs` | Desktop app: commands, image protocol, file watching |
 | `src-tauri/src/roots.rs` | Desktop app: list of sources and the path guard, with its tests |
 | `src-tauri/src/github.rs` | Desktop app: download and update with `git`, the saved token |
-| `test/` | Tests for the Node path guard, the GitHub code, the hosted guard, the settings and the renderer |
+| `test/` | Tests for the renderer, the settings, GitHub addresses and the web version's guard |
 | `.github/workflows/pages.yml` | Publishes `public/` to GitHub Pages |
 | `ROADMAP.md` | Planned work |
 | `CLAUDE.md` | Rules and map of the code for contributors (human or AI) |
@@ -200,15 +180,16 @@ remembered, and switching keeps the place being read.
 
 ```sh
 npm install                      # once, for the renderer tests
-npm test                         # Node path guard and renderer
-(cd src-tauri && cargo test)     # Rust path guard and GitHub code
+npm test                         # renderer, settings, web version
+(cd src-tauri && cargo test)     # desktop app: path guard and GitHub code
+npm run web                      # the web version on http://localhost:4747, to try a change
 # A real download from GitHub through the Rust code (needs the network):
 (cd src-tauri && XDG_DATA_HOME=/some/tmp cargo test -- --ignored)
 ```
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md): sign-in for the hosted version, and packages for macOS and
+See [ROADMAP.md](ROADMAP.md): sign-in for the web version, and packages for macOS and
 Windows.
 
 ## License

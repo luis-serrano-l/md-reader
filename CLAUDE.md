@@ -2,26 +2,26 @@
 
 App that renders `.md` files from user-chosen sources (local folders, single local files,
 GitHub folders or files) with the "study PDF" look. One no-build front end (`public/`) with
-three back ends: a Node server on `127.0.0.1` (browser version), a Tauri app (`src-tauri/`,
-desktop version) and, when `public/` is served as a static site from any non-loopback address,
-GitHub's API (hosted version, a PWA). See `README.md` for usage and `ROADMAP.md` for what is
-open.
+two back ends: a Tauri app (`src-tauri/`, desktop version, the only code that reads the disk)
+and GitHub's API (`public/web-backend.js`: the web version, a static site and PWA, wherever
+`public/` is opened in a browser). There is no server. See `README.md` for usage and
+`ROADMAP.md` for what is open.
 
 ## Commands
 
 ```sh
-npm start                  # http://localhost:4747 (PORT=... to change)
+npm run web                # the web version on http://localhost:4747 (python3 http.server)
 npm test                   # node --test, no extra tooling
 node --check public/app.js # syntax check for the front end
 npm run desktop            # desktop app from source (tauri dev)
 npm run desktop:build      # release binary + .deb under src-tauri/target/release
-(cd src-tauri && cargo test)   # Rust path guard tests
+(cd src-tauri && cargo test)   # path guard and GitHub code
 npm run vendor             # refresh public/vendor/ from node_modules
 ```
 
-For manual testing, use a scratch folder list so the owner's real one is untouched:
-`MD_READER_CONFIG=/some/tmp/config.json PORT=4799 npm start`. The desktop app reads the same
-variable. With it set, GitHub downloads and the token file also go next to that file
+For manual testing of the desktop app, use a scratch list of sources so the owner's real one
+is untouched: `MD_READER_CONFIG=/some/tmp/config.json src-tauri/target/debug/md-reader`. With
+it set, GitHub downloads and the token file also go next to that file
 (`md-reader-data/`, `github-token`), not to the owner's.
 `(cd src-tauri && XDG_DATA_HOME=/some/tmp cargo test -- --ignored)` runs a real download. Close the desktop app before `npm run desktop:build`, or packaging fails with "Text
 file busy".
@@ -30,26 +30,25 @@ file busy".
 
 - **`.md` only.** Documents are `.md`; the only other files served are images linked from a
   note. Do not add routes that serve other file types.
-- **One path guard per back end, kept identical.** Node: every route that reads from disk goes
-  through `RootStore.resolveInside()` in `server/roots.js`. Rust: every command and the `mdr`
-  image protocol go through `RootStore::resolve_inside` in `src-tauri/src/roots.rs`. Never build
-  a file path from request input anywhere else. A change to the guard is made in both, with a
-  test in `test/roots.test.js` and in the `tests` module of `roots.rs`. The hosted version has
-  its own (`resolveInside` in `public/web-backend.js`, tested in `test/web.test.js`).
+- **One path guard per back end.** Desktop: every command and the `mdr` image protocol go
+  through `RootStore::resolve_inside` in `src-tauri/src/roots.rs`. Never build a file path from
+  request input anywhere else; a change to the guard comes with a test in the `tests` module
+  of `roots.rs`. Web: `resolveInside` in `public/web-backend.js`, tested in `test/web.test.js`.
+  The two follow the same rules; keep them so.
 - **Sources.** A config entry is a string (local folder) or `{ path, kind: "folder" | "file",
   github? }`. A single file opens only itself, plus images in its folder or below (none when
   that folder is the home folder or `/`). A source with `github` must resolve inside
   `github.dir`; the guard checks it on every read, because a repository can hold links.
-- **GitHub code** (`server/github.js`, `src-tauri/src/github.rs`, kept identical). The one
+- **GitHub code** (`src-tauri/src/github.rs`). The one
   exception to "no path from request input": the download folder
-  `repos/<owner>/<repo>/<key>` is built from an address that `parseGithubUrl` has checked part
+  `repos/<owner>/<repo>/<key>` is built from an address that `parse_github_url` has checked part
   by part. Keep it so: no `..`, no leading `-`, nothing `git` could read as an option; always
   `--` before addresses and paths. Only folders exactly three levels below `repos/` are ever
   deleted. The app only clones, fetches and resets: never a commit or a push.
 - **The token is write-only.** Saved in `github-token` (mode 0600) next to the config file;
   no route or command returns it, no error message contains it, and it reaches `git` only
   through `GIT_CONFIG_*` environment variables of one command (never the URL, never
-  `.git/config`). In the hosted version it is in the browser's Cache storage (`mdr-private`),
+  `.git/config`). In the web version it is in the browser's Cache storage (`mdr-private`),
   read by `web-backend.js` and `sw.js`, and sent to `api.github.com` only.
 - **Nothing is readable until the user adds a source.** Do not pre-add any, and do not write
   the owner's `~/.config/md-reader/config.json`, `github-token` or
@@ -57,18 +56,16 @@ file busy".
 - **The desktop page gets no plugin permissions.** `src-tauri/capabilities/default.json` grants
   `core:default` only. The folder dialog and the link opener are called from Rust commands
   (`pick_folder`, `open_external`), never from the page.
-- **Local only.** The server binds `127.0.0.1` and `checkCaller()` in `server/index.js` refuses
-  foreign `Host`, `Origin` and cross-site requests. Keep both.
+- **No server.** Nothing in this project listens on a port. Do not add one without asking.
 - **No raw HTML from notes.** markdown-it runs with `html: false`; the front end assigns the
   rendered HTML with `innerHTML` and relies on that.
 - **No inline styles or inline scripts.** The page's Content-Security-Policy forbids them (set
-  in `server/index.js` and in `src-tauri/tauri.conf.json`; keep the two in step; the hosted
-  version adds its own as a `<meta>` from `web-backend.js`, since a static host sends none). Table
+  in `src-tauri/tauri.conf.json` for the desktop app; the web version adds its own as a
+  `<meta>` from `web-backend.js`, since a static host sends none; keep the two in step). Table
   alignment is a class (`align-right`), not a `style` attribute. Setting `element.style` from
   JavaScript is fine.
 - **No Electron, ever** (owner's rule: too heavy on RAM). The desktop app, when built, is Tauri.
-- **Keep it light.** No bundler, no framework, no build step. The Node server has no runtime
-  dependency. The page uses three libraries, committed as browser builds in `public/vendor/`:
+- **Keep it light.** No bundler, no framework, no build step. The page uses three libraries, committed as browser builds in `public/vendor/`:
   `markdown-it`, `markdown-it-task-lists`, `highlight.js`. Rust crates: `tauri`,
   `tauri-plugin-dialog`, `tauri-plugin-opener`, `notify`, `serde`, `serde_json`,
   `percent-encoding`. GitHub sources run the `git` program; there is no git or HTTP library. Development only (npm): `@tauri-apps/cli` (builds the desktop app) and
@@ -77,8 +74,6 @@ file busy".
 
 ## Where things are
 
-- `server/roots.js`: folder list (load/save), path guard, file tree, directory browser for the
-  "Add folder" dialog.
 - `public/render.js`: markdown-it setup, run in the page and imported by the tests. It imports
   nothing; the libraries are passed to `createRenderer()`. Core rules add heading ids and the
   outline, rewrite relative images to asset URLs and relative `.md` links to in-app links, and
@@ -92,34 +87,30 @@ file busy".
 - `public/settings.js`: fonts and colours. Pure data and functions, tested in
   `test/settings.test.js`. A setting only ever becomes a CSS custom property; `normalize()`
   drops anything that is not a known look, a listed font, a size in range or a `#rrggbb`
-  colour. Stored under `settings` in the config file, which both back ends write one key at a
-  time (`write()`), keeping the rest as it is on disk.
+  colour. The desktop app stores them under `settings` in the config file, written one key
+  at a time (`write()`), keeping the rest as it is on disk; the web version uses `localStorage`.
 - `public/backend.js`: the only file that knows which back end is there. `window.__TAURI__`
-  present: Tauri commands; a loopback hostname: `fetch` to the Node server; anything else: the
-  hosted version. New back-end calls go here, with all the implementations that can have them.
-- `public/web-backend.js`: the hosted back end. Sources and settings in `localStorage`, notes
+  present: Tauri commands; otherwise the web version. New back-end calls go here, with both
+  implementations where both can have them.
+- `public/web-backend.js`: the web back end. Sources and settings in `localStorage`, notes
   from `raw.githubusercontent.com` (or the API with a token), the list of notes from the git
-  trees API. It also registers `sw.js` and adds the manifest link, so the local versions never
-  have a service worker. `public/sw.js`: keeps the app and opened notes for offline use and
+  trees API. It also registers `sw.js` and adds the manifest link, so the desktop app never
+  has a service worker. `public/sw.js`: keeps the app and opened notes for offline use and
   answers `gh-asset?...` (images of private repositories, as images only). A file added to
-  `public/` must be added to `FILES` in `sw.js`, and to `STATIC` in `server/index.js` if the
-  local page loads it. All URLs in the page are relative, so the site works below a sub-path.
+  `public/` must be added to `FILES` in `sw.js`. All URLs in the page are relative, so the site works below a sub-path.
 - `.github/workflows/pages.yml`: publishes `public/` to GitHub Pages on a push to `main`.
   The repository is public: never commit a token, a personal address or a private path.
-- `public/github-url.js`: `parseGithubUrl`, pure, used by `server/github.js` and
-  `web-backend.js`. `github.rs` has the same rules; the tests in `test/github.test.js` and in
+- `public/github-url.js`: `parseGithubUrl`, pure, used by `web-backend.js`. `github.rs` has
+  the same rules; the tests in `test/github.test.js` and in
   `github.rs` use the same lists of good and bad addresses.
-- `server/github.js`: `download`, `update`, `discard`, the token file, and `git()` (timeout,
-  own process group, token through the environment).
-- `server/index.js`: routes (`/api/roots`, `/api/browse`, `/api/tree`, `/api/doc`, `/asset`,
-  `/api/watch`, `/api/github`, `/api/github/update`, `/api/github/token`), `/api/doc` returns the Markdown source, static files from an explicit allow-list (`STATIC`), security headers.
-- `src-tauri/src/lib.rs`: the desktop twin of `server/index.js`. Commands `list_roots`,
+- `src-tauri/src/lib.rs`: the desktop back end. Commands `list_roots`,
   `add_root`, `add_file`, `add_github`, `update_github`, `github_token_status`,
   `set_github_token`, `clear_github_token`, `remove_root`, `tree`, `read_doc`, `watch_doc`,
   `pick_folder`, `pick_file`, `open_external`, `set_fullscreen` (`git` runs through
-  `blocking()`, off the async workers, with the store unlocked); the `mdr://` protocol serves images; a `doc-changed` event replaces SSE.
-- `src-tauri/src/roots.rs`: the desktop twin of `server/roots.js` (same config file and format;
-  folder ids differ between the two back ends, so a `?root=` link is not portable).
+  `blocking()`, off the async workers, with the store unlocked); the `mdr://` protocol serves images; a `doc-changed` event tells the page that the open note changed on disk.
+- `src-tauri/src/roots.rs`: the list of sources (load/save of the config file), the path
+  guard, the file tree. `src-tauri/src/github.rs`: `download`, `update`, `discard`, the token
+  file, and running `git` (timeout, own process group, token through the environment).
 - `public/study.css`: the look of the note. A port of the stylesheet behind the study PDFs
   (`~/notes/middle-term-exam-prep/readme-study.css`). Every font and colour is a
   CSS custom property on `.sheet`; add new ones there instead of hard-coding values, because the
@@ -136,8 +127,8 @@ file busy".
 
 ## Checking a change
 
-- Server or renderer: `npm test`, and add a test for new behaviour. Rust: `cargo test` in
-  `src-tauri/`.
+- Front-end modules with tests (renderer, settings, GitHub addresses, web guard): `npm test`,
+  and add a test for new behaviour. Rust: `cargo test` in `src-tauri/`.
 - Desktop app window: run the binary with `GDK_BACKEND=x11` and a scratch `MD_READER_CONFIG`,
   capture it with `xwd -id <window id>` (id from `wmctrl -l`), and click buttons through the
   accessibility interface (`gi.repository.Atspi`, `do_action(0)`). Images are lazy-loaded, so
@@ -148,10 +139,8 @@ file busy".
   instead of `--virtual-time-budget`, which never finishes.
 - Printing: `Page.printToPDF` through the Chrome DevTools protocol (plain `--print-to-pdf`
   prints before the note is rendered). The page margins are painted by `@page` margin boxes.
-- Hosted version: serve `public/` with `python3 -m http.server 4801 --bind 127.0.0.1` and open
-  it in Chrome under a non-loopback name, with
-  `--host-resolver-rules="MAP mdr.test 127.0.0.1"` and
-  `--unsafely-treat-insecure-origin-as-secure=http://mdr.test:4801` (a service worker needs a
-  secure origin). On `localhost` the page would talk to the Node server instead.
+- Web version: `npm run web` and open `http://localhost:4747` in Chrome (localhost counts as
+  a secure origin, so the service worker runs). For tablet and phone sizes use device emulation
+  (`Emulation.setDeviceMetricsOverride` through the DevTools protocol), not the window size.
 - Front-end behaviour (clicks, panels, full screen) is not covered by tests. Say so when it was
   not tried in a browser.

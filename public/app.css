@@ -126,14 +126,6 @@ details[open] > summary::before { content: "▾"; }
 .picker-path { display: flex; gap: 6px; }
 .picker-path input { flex: 1; min-width: 0; font: 13px "Fira Code", "DejaVu Sans Mono", monospace; padding: 6px 8px;
                      border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-field); color: var(--ui-ink); }
-.picker-list { list-style: none; margin: 0; padding: 4px; height: min(320px, 45vh); overflow-y: auto; background: var(--ui-field);
-               border: 1px solid var(--ui-line); border-radius: 6px; }
-.picker-list button { display: flex; justify-content: space-between; gap: 12px; width: 100%; text-align: left; font: inherit;
-                      border: 0; background: none; padding: 6px 8px; border-radius: 5px; cursor: pointer; color: var(--ui-ink); }
-.picker-list button:hover { background: var(--ui-bg); }
-.picker-list .count { color: var(--ui-muted); white-space: nowrap; }
-.picker-list .empty { color: var(--ui-muted); padding: 8px; }
-.picker-list .is-file { color: var(--ui-head); }
 .source-choices { display: flex; flex-direction: column; gap: 6px; }
 .source-choices button { display: block; width: 100%; text-align: left; font: inherit; padding: 9px 12px; cursor: pointer;
                          border: 1px solid var(--ui-line); border-radius: 6px; background: var(--ui-field); color: var(--ui-ink); }
@@ -202,8 +194,7 @@ details[open] > summary::before { content: "▾"; }
   .root > details > summary { padding-right: 84px; }
   .root-remove, .root-update { width: 36px; height: 36px; top: 3px; }
   .root-update { right: 42px; }
-  .picker-list button, .btn { padding-top: 9px; padding-bottom: 9px; }
-  .outline a { padding-top: 7px; padding-bottom: 7px; }
+    .outline a { padding-top: 7px; padding-bottom: 7px; }
 }
 
 /* Full screen where the browser has none (iPad, iPhone): the note takes the whole window. */

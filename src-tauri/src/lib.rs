@@ -1,5 +1,5 @@
-//! md-reader desktop app. The window shows the same front end as the localhost version
-//! (`public/`); these commands replace the Node server. Nothing here reads a file except through
+//! md-reader desktop app. The window shows the same front end as the web version (`public/`);
+//! these commands are its back end. Nothing here reads a file except through
 //! `RootStore::resolve_inside`.
 
 mod github;

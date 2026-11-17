@@ -1,5 +1,5 @@
-// md-reader front end. Everything that touches the disk goes through backend.js, which is the
-// local server in a browser and Tauri commands in the desktop app. Markdown is rendered here.
+// md-reader front end. Everything that fetches notes goes through backend.js, which is Tauri
+// commands in the desktop app and GitHub's API in a browser. Markdown is rendered here.
 import { backend } from './backend.js';
 import { createRenderer } from './render.js';
 import { paginate, currentPage } from './pages.js';
@@ -838,17 +838,6 @@ $('mdr-github-token-clear').addEventListener('click', async () => {
 
 // ---------- Adding a source ----------
 
-const picker = $('mdr-picker');
-const pickerInput = $('mdr-picker-input');
-const pickerList = $('mdr-picker-list');
-const pickerError = $('mdr-picker-error');
-const pickerCount = $('mdr-picker-count');
-let pickerDir = null;
-let pickerFiles = false; // true while the picker is choosing one file instead of a folder
-
-const mdCount = (n) => (n === 1 ? '1 .md file' : `${n} .md files`);
-const isMd = (path) => /\.md$/i.test(path);
-
 // The kinds of source that can be added. Each `add` opens its own dialog.
 const SOURCES = [
   { title: 'Folder on this computer', text: 'All the .md files in it, sub-folders included.', add: () => pickLocal(false), local: true },
@@ -868,69 +857,15 @@ function buildSourceChoices() {
   }
 }
 
-async function browseTo(dir) {
-  pickerError.textContent = '';
-  let listing;
-  try {
-    listing = await backend.browse(dir, pickerFiles);
-  } catch (err) {
-    pickerError.textContent = err.message;
-    return false;
-  }
-  pickerDir = listing;
-  pickerInput.value = listing.dir;
-  $('mdr-picker-up').disabled = !listing.parent;
-  pickerCount.textContent = `${mdCount(listing.md)} directly in this folder`;
-  pickerList.replaceChildren();
-  const files = pickerFiles ? listing.files || [] : [];
-  if (!listing.dirs.length && !files.length) {
-    pickerList.append(el('li', { className: 'empty', textContent: pickerFiles ? 'No sub-folders or .md files here.' : 'No sub-folders here.' }));
-  }
-  for (const d of listing.dirs) {
-    const button = el('button', { type: 'button' }, [
-      el('span', { textContent: `${d.name}/` }),
-      el('span', { className: 'count', textContent: d.md ? mdCount(d.md) : '' }),
-    ]);
-    button.addEventListener('click', () => browseTo(d.path));
-    pickerList.append(el('li', {}, [button]));
-  }
-  for (const f of files) {
-    const button = el('button', { type: 'button', className: 'is-file' }, [
-      el('span', { textContent: f.name }),
-      el('span', { className: 'count', textContent: 'add this file' }),
-    ]);
-    button.addEventListener('click', () => addFromPicker(f.path));
-    pickerList.append(el('li', {}, [button]));
-  }
-  pickerList.scrollTop = 0;
-  return true;
-}
-
-// Desktop app: the system's own dialog. Browser: the in-page browser of folders (and .md files).
+// Desktop app only: the system's own dialog.
 async function pickLocal(file) {
-  const native = file ? backend.pickFile : backend.pickFolder;
-  if (native) {
-    try {
-      const path = await native();
-      if (path) await addLocal(path, file);
-    } catch (err) {
-      await ask(file ? 'The file could not be added' : 'The folder could not be added', err.message);
-    }
-    return;
+  try {
+    const path = await (file ? backend.pickFile() : backend.pickFolder());
+    if (path) await addLocal(path, file);
+  } catch (err) {
+    await ask(file ? 'The file could not be added' : 'The folder could not be added', err.message);
   }
-  pickerFiles = file;
-  $('mdr-picker-title').textContent = file ? 'Add a file' : 'Add a folder';
-  $('mdr-picker-help').textContent = file
-    ? 'Pick one Markdown (.md) file. md-reader will open only that file, and the images it shows from its own folder.'
-    : 'md-reader can open only the Markdown (.md) files inside the folders you add here.';
-  pickerInput.setAttribute('aria-label', file ? 'Folder or file path' : 'Folder path');
-  $('mdr-picker-add').hidden = file;
-  picker.showModal();
-  await browseTo(store.get('picker-dir', null));
-  if (!pickerDir) await browseTo(null);
-  pickerInput.focus();
 }
-
 async function addLocal(path, file) {
   const root = await (file ? backend.addFile(path) : backend.addRoot(path));
   await loadRoots();
@@ -940,37 +875,7 @@ async function addLocal(path, file) {
   return root;
 }
 
-async function addFromPicker(path = pickerInput.value.trim()) {
-  if (!path) return;
-  try {
-    const root = await addLocal(path, pickerFiles);
-    store.set('picker-dir', root.path.replace(/\/[^/]*$/, '') || '/');
-    picker.close();
-  } catch (err) {
-    pickerError.textContent = err.message;
-  }
-}
-
-// A typed path: a folder is opened in the list; in file mode a .md path is added straight away.
-// (A folder may be named like a note, so the folder is tried first.)
-const goToTyped = async () => {
-  const typed = pickerInput.value.trim();
-  if (!(await browseTo(typed)) && pickerFiles && isMd(typed)) await addFromPicker(typed);
-};
-
 $('mdr-add').addEventListener('click', () => $('mdr-sources').showModal());
-$('mdr-picker-cancel').addEventListener('click', () => picker.close());
-$('mdr-picker-up').addEventListener('click', () => pickerDir?.parent && browseTo(pickerDir.parent));
-$('mdr-picker-go').addEventListener('click', goToTyped);
-$('mdr-picker-add').addEventListener('click', () => addFromPicker());
-$('mdr-picker-form').addEventListener('submit', (event) => event.preventDefault());
-pickerInput.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    goToTyped();
-  }
-});
-
 // ---------- Start ----------
 
 function fromLocation() {
@@ -998,7 +903,7 @@ async function start() {
   try {
     await loadRoots();
   } catch (err) {
-    showNotice('md-reader cannot reach its server', err.message, { error: true });
+    showNotice('md-reader could not load the list of sources', err.message, { error: true });
     return;
   }
   const target = fromLocation() || store.get('last', null);

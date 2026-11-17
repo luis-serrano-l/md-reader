@@ -1,10 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { normalize, variables, shownColor, DEFAULTS, PRESETS } from '../public/settings.js';
-import { RootStore } from '../server/roots.js';
 
 test('normalize keeps valid settings and replaces anything else with the default', () => {
   assert.deepEqual(normalize(null), { ...DEFAULTS, colors: {} });
@@ -36,34 +32,4 @@ test('a colour control shows the chosen colour, else the look\'s own', () => {
   assert.equal(shownColor({}, 'paper'), '#fbf7ee');
   assert.equal(shownColor({ preset: 'dark' }, 'paper'), PRESETS.dark.sheet['--paper']);
   assert.equal(shownColor({ preset: 'dark', colors: { paper: '#101010' } }, 'paper'), '#101010');
-});
-
-test('settings are stored next to the folders and neither overwrites the other', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdr-settings-'));
-  try {
-    const file = path.join(dir, 'config.json');
-    const notes = path.join(dir, 'notes');
-    fs.mkdirSync(notes);
-    const store = new RootStore(file);
-    assert.deepEqual(store.getSettings(), {});
-    store.saveSettings({ preset: 'dark' });
-    store.add(notes);
-    // Another program (the desktop app) changes the settings while this one is running.
-    new RootStore(file).saveSettings({ preset: 'white' });
-    fs.mkdirSync(path.join(dir, 'more'));
-    store.add(path.join(dir, 'more'));
-    const reloaded = new RootStore(file);
-    assert.equal(reloaded.list().length, 2);
-    assert.deepEqual(reloaded.getSettings(), { preset: 'white' });
-    // A folder added by the other program is not lost when this one adds or removes a folder.
-    fs.mkdirSync(path.join(dir, 'other'));
-    const otherId = new RootStore(file).add(path.join(dir, 'other')).id;
-    store.remove(store.list()[0].id);
-    assert.deepEqual(new RootStore(file).list().map((r) => r.name), ['more', 'other']);
-    assert.ok(store.get(otherId));
-    assert.throws(() => store.saveSettings('dark'), (err) => err.status === 400);
-    assert.throws(() => store.saveSettings({ x: 'y'.repeat(9000) }), (err) => err.status === 413);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
 });

@@ -1,6 +1,6 @@
-// Reads a GitHub address. Pure (no DOM, no Node), shared by the local server
-// (server/github.js) and the hosted version (web-backend.js); the desktop app has the same
-// rules in src-tauri/src/github.rs. Errors carry a `status` (400 or 403).
+// Reads a GitHub address. Pure (no DOM, no Node), used by the web version (web-backend.js);
+// the desktop app has the same rules in src-tauri/src/github.rs, tested with the same lists
+// of good and bad addresses (test/github.test.js). Errors carry a `status` (400 or 403).
 const OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const REPO = /^[A-Za-z0-9._-]{1,100}$/;
 const REF = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;

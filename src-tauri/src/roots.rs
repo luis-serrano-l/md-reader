@@ -1,5 +1,4 @@
-//! The list of allowed sources and the path guard. The Rust twin of `server/roots.js`: same
-//! config file, same rules, same tests. Every command that reads from disk goes through
+//! The list of allowed sources and the path guard. Every command that reads from disk goes through
 //! `RootStore::resolve_inside`, the only place that turns a request into a file path.
 //!
 //! A source is a folder (all its `.md` files) or a single `.md` file. In the config file a
@@ -153,7 +152,7 @@ pub struct RootStore {
 }
 
 pub fn default_config_path() -> PathBuf {
-    // Same rule as defaultConfigPath() in server/roots.js: an empty variable counts as unset.
+    // An empty variable counts as unset.
     if let Some(path) = std::env::var_os("MD_READER_CONFIG").filter(|p| !p.is_empty()) {
         return PathBuf::from(path);
     }
@@ -237,8 +236,8 @@ impl RootStore {
             .unwrap_or_default()
     }
 
-    /// Writes one key of the config file and keeps the rest as it is on disk, so the desktop
-    /// app and the browser version (which share the file) do not undo each other's changes.
+    /// Writes one key of the config file and keeps the rest as it is on disk, so two
+    /// running copies of the app (which share the file) do not undo each other's changes.
     fn write(&self, key: &str, value: serde_json::Value) -> std::io::Result<()> {
         if let Some(dir) = self.file.parent() {
             fs::create_dir_all(dir)?;
@@ -300,7 +299,7 @@ impl RootStore {
         if input.is_empty() || input.contains('\0') {
             return fail(Kind::BadRequest, "Give the path of a folder.");
         }
-        self.load(); // the browser version may have changed the list since it was read
+        self.load(); // another running copy may have changed the list since it was read
         let wanted = expand_home(input);
         if !wanted.is_absolute() {
             return fail(Kind::BadRequest, "The path must be absolute (start with / or ~).");
