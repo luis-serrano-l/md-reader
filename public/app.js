@@ -374,6 +374,7 @@ function showContinuous() {
   // The HTML comes from render.js, which does not pass a note's raw HTML through.
   sheet.innerHTML = state.html;
   sheet.classList.remove('paged');
+  addCopyButtons(sheet);
   renderOutline(state.toc);
 }
 
@@ -386,6 +387,7 @@ async function showPages() {
   work.hidden = false;
   work.classList.remove('paged');
   work.innerHTML = html;
+  addCopyButtons(work);
   const holder = el('div', { className: 'measure' }, [work]);
   desk.append(holder);
   try {
@@ -406,13 +408,14 @@ async function showPages() {
   }
 }
 
-// Code blocks: a button in the corner copies the code. It is added to the laid-out note, never
-// to the rendered HTML, so the pages are cut without it; print hides it (app.css).
-function addCopyButtons() {
-  for (const pre of sheet.querySelectorAll('pre:not(.cont)')) {
+// Code blocks: a button in the corner copies the code. It floats at the start of the block, so
+// the first lines of code end before it instead of running under it. That changes where
+// lines break: it is added before the pages are cut. Print hides it (app.css).
+function addCopyButtons(root) {
+  for (const pre of root.querySelectorAll('pre')) {
     const button = el('button', { type: 'button', className: 'copy-btn', title: 'Copy the code' }, [icon('copy')]);
     button.setAttribute('aria-label', 'Copy the code');
-    pre.append(button);
+    pre.prepend(button);
   }
 }
 const pieceText = (pre) => [...pre.childNodes].filter((node) => !node.classList?.contains('copy-btn')).map((node) => node.textContent).join('');
@@ -468,7 +471,6 @@ function layout({ paged = state.paged, keepPlace = false, place, after } = {}) {
     const at = place !== undefined ? place : keepPlace ? readingPlace() : undefined;
     if (paged && state.html) await showPages();
     else showContinuous();
-    addCopyButtons();
     if (at !== undefined) showPlace(at);
     after?.();
     lastWidth = sheet.getBoundingClientRect().width;

@@ -136,8 +136,9 @@ file busy".
   scroll snap. `readingPlace()`, `showPlace()`, `turnPage()`, `updateSpy()` and
   `updatePageInfo()` each have a book branch; a new helper that scrolls needs one too.
   `.app.reading` rules name every `no-sidebar`/`no-outline` combination to win over them.
-- Copy buttons of code blocks (`addCopyButtons()` in `app.js`) are added after every layout,
-  never to the rendered HTML, so `paginate()` measures without them; print hides them.
+- Copy buttons of code blocks (`addCopyButtons()` in `app.js`) are added to the note's DOM, never
+  to the rendered HTML, and before `paginate()`: the button floats, so it changes where the
+  first lines of code break. Print hides them.
 - `public/app.js`: all front-end behaviour. Element ids start with `mdr-`; heading ids in notes
   start with `h-`, so the two never collide.
 

@@ -318,18 +318,16 @@ details[open] > summary::before { transform: rotate(45deg); margin-bottom: 3px; 
   @bottom-center { content: ""; background: var(--print-paper, #fbf7ee); }
   @bottom-right-corner { content: ""; background: var(--print-paper, #fbf7ee); }
 }
-/* The copy button of a code block (app.js adds it). Shown while the pointer is on the block or
-   the button has the focus; always on a touch screen. */
-.sheet pre { position: relative; }
-.copy-btn { position: absolute; top: 4px; right: 4px; display: grid; place-items: center; width: 30px; height: 30px; padding: 0;
-            border: 0; border-radius: 6px; background: var(--pre-bg); color: var(--pre-ink); opacity: 0; cursor: pointer;
-            transition: opacity 0.12s; }
+/* The copy button of a code block (app.js adds it as the first thing in the block). It floats
+   in the top right corner, so the code beside it wraps before it; fainter until pointed at. */
+.copy-btn { float: right; display: grid; place-items: center; width: 28px; height: 28px; margin: -5px -7px 2px 8px; padding: 0;
+            border: 0; border-radius: 6px; background: none; color: var(--pre-ink); opacity: 0.55; cursor: pointer;
+            transition: opacity 0.12s, background-color 0.12s; }
 .copy-btn .icon { width: 17px; height: 17px; }
-.sheet pre:hover > .copy-btn { opacity: 0.6; }
-.copy-btn:hover, .copy-btn:focus-visible, .copy-btn.done { opacity: 1 !important; }
+.copy-btn:hover, .copy-btn:focus-visible, .copy-btn.done { opacity: 1; background: var(--rule, rgba(128, 128, 128, 0.2)); }
 .copy-btn:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; }
 .copy-area { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
-@media (hover: none) { .copy-btn { opacity: 0.6; width: 36px; height: 36px; } }
+@media (pointer: coarse) { .copy-btn { width: 34px; height: 34px; } }
 @media (prefers-reduced-motion: reduce) { .copy-btn { transition: none; } }
 
 @media print {
