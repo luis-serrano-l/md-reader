@@ -136,7 +136,7 @@
 .sheet li.cont { list-style: none; }   /* the rest of an item cut by a page: no second mark */
 
 /* Book mode (full screen in pages view, see app.js): the pages lie side by side and each one
-   has the size of the screen, or of half of it; --book-w and --book-h are set by fit().
+   has the size of the screen; --book-w and --book-h are set by fit().
    The margins follow that size, since a percentage would be taken from the whole row of pages. */
 .app.book .sheet.paged { display: flex; width: max-content; max-width: none; }
 .app.book .sheet.paged > .page {
@@ -147,5 +147,4 @@
            max(var(--pad-y), calc(env(safe-area-inset-bottom) + 22px));
   scroll-snap-align: start; scroll-margin-top: 0;
 }
-.app.book.spread .sheet.paged > .page:nth-child(even) { scroll-snap-align: none; border-left: 1px solid var(--sheet-edge); }
 .app.book .sheet.paged > .page::after { bottom: max(calc(var(--pad-y) * 0.3), env(safe-area-inset-bottom)); }

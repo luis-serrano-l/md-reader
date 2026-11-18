@@ -349,13 +349,10 @@ function showPlace(place) {
   desk.scrollTop += box.top - desk.getBoundingClientRect().top - offset;
 }
 
-// Book mode: brings the page that holds `node` on screen (with its neighbour, where two show).
+// Book mode: brings the page that holds `node` on screen.
 function showPageOf(node) {
-  const pages = [...sheet.children];
-  const index = pages.indexOf(node.closest('.page'));
-  if (index < 0) return;
-  const first = pages[index - (index % spread)];
-  desk.scrollLeft += first.getBoundingClientRect().left - desk.getBoundingClientRect().left;
+  const page = node.closest('.page');
+  if (page) desk.scrollLeft += page.getBoundingClientRect().left - desk.getBoundingClientRect().left;
 }
 
 const showNode = (node) => (isBook() ? showPageOf(node) : node.scrollIntoView());
@@ -451,10 +448,10 @@ new ResizeObserver(() => {
   if (Math.abs(sheet.getBoundingClientRect().width - lastWidth) >= 1) relayoutSoon(true);
 }).observe(sheet);
 
-// Book mode: the first page on screen, counted from 0. A page counts once half of it is in.
-function firstShownPage() {
+// Book mode: the page on screen, counted from 0. A page counts once half of it is in.
+function shownPage() {
   const box = desk.getBoundingClientRect();
-  return currentPage(sheet, box.left + box.width / (2 * spread), true) - 1;
+  return currentPage(sheet, box.left + box.width / 2, true) - 1;
 }
 
 function updatePageInfo() {
@@ -464,10 +461,8 @@ function updatePageInfo() {
   if (!total) return;
   const short = window.matchMedia('(max-width: 760px)').matches;
   const box = desk.getBoundingClientRect();
-  const first = isBook() ? firstShownPage() + 1 : currentPage(sheet, box.top + box.height / 2);
-  const last = isBook() ? Math.min(total, first + spread - 1) : first;
-  const shown = last > first ? `${first}-${last}` : `${first}`;
-  info.textContent = short ? `${shown} / ${total}` : `${last > first ? 'pages' : 'page'} ${shown} of ${total}`;
+  const shown = isBook() ? shownPage() + 1 : currentPage(sheet, box.top + box.height / 2);
+  info.textContent = short ? `${shown} / ${total}` : `page ${shown} of ${total}`;
 }
 
 function setView(paged) {
@@ -486,18 +481,15 @@ function showView() {
 $('mdr-view-continuous').addEventListener('click', () => state.paged && setView(false));
 $('mdr-view-pages').addEventListener('click', () => state.paged || setView(true));
 
-// One page further or back. In book mode: the next or the previous screen (one page, or two
-// side by side). Otherwise one page down or up, or one screen when a page is taller than the
+// One page further or back. In book mode: the next or the previous page, sideways.
+// Otherwise one page down or up, or one screen when a page is taller than the
 // window (large zoom), so no part of a page is skipped.
 let turning = null; // book mode: where a turn that is still gliding will end
 let turnTimer = null;
 function turnPage(step) {
   if (isBook()) {
     const pages = [...sheet.children];
-    const shown = firstShownPage();
-    const from = turning ?? shown - (shown % spread);
-    let index = Math.min(Math.max(from + step * spread, 0), pages.length - 1);
-    index -= index % spread;
+    const index = Math.min(Math.max((turning ?? shownPage()) + step, 0), pages.length - 1);
     turning = index;
     clearTimeout(turnTimer);
     turnTimer = setTimeout(() => (turning = null), 500);
@@ -785,11 +777,10 @@ window.addEventListener('afterprint', () => {
 // click on the middle of the note shows the top bar over it, and again hides it.
 //
 // Continuous view stays one sheet, as wide as the window. Pages view becomes a book: every
-// page has the size of the screen (two side by side on a wide one) and is cut for that size,
+// page has the size of the screen (always one at a time) and is cut for that size,
 // and the pages are turned sideways: swipe, the arrow keys, or a tap near an edge.
 
 const PAGE_WIDTH_PX = 816; // 8.5in: --page-width of the sheet in study.css
-let spread = 1; // pages on screen at once in book mode
 let fitKey = 'window';
 // Sizes the sheet for where it is shown. Returns whether anything changed.
 function fit() {
@@ -799,25 +790,21 @@ function fit() {
   const height = desk.clientHeight;
   let key = 'window';
   let zoom = Math.min(2, Math.max(0.7, Number(store.get('zoom', 1)) || 1));
-  let across = 1;
   if (book) {
-    // A wide screen shows two pages, so lines stay a readable length (a phone on its side too).
-    across = width > height && width >= 700 ? 2 : 1;
-    // Never beyond the largest zoom the buttons give, however wide the window.
-    zoom = Math.min(2, Math.max(1, width / across / PAGE_WIDTH_PX));
-    key = `book:${across}:${width}:${height}`;
+    // Never beyond the largest zoom the buttons give, however wide the window: the page then
+    // keeps its own margins, so the lines stay a readable length.
+    zoom = Math.min(2, Math.max(1, width / PAGE_WIDTH_PX));
+    key = `book:${width}:${height}`;
   } else if (reading) {
     zoom = Math.min(2, width / Math.min(PAGE_WIDTH_PX, width));
     key = `sheet:${zoom}`;
   }
   if (key === fitKey) return false;
   fitKey = key;
-  spread = across;
   app.classList.toggle('book', book);
-  app.classList.toggle('spread', book && across === 2);
   sheet.style.zoom = zoom;
   if (book) {
-    sheet.style.setProperty('--book-w', `${width / across / zoom}px`);
+    sheet.style.setProperty('--book-w', `${width / zoom}px`);
     sheet.style.setProperty('--book-h', `${height / zoom}px`);
   } else {
     sheet.style.removeProperty('--book-w');

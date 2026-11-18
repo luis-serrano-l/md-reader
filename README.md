@@ -116,8 +116,8 @@ Full screen shows the note and nothing else. A tap or a click on the middle of t
 the top bar over it (to print, change the view or leave) and again hides it. On a touch
 screen a tap on the middle of a note also enters full screen.
 
-In pages view full screen is a book: each page has the size of the screen, two side by side
-on a screen that is wider than tall, and the pages turn sideways. Swipe, tap or click near
+In pages view full screen is a book: each page has the size of the screen, one at a
+time, and the pages turn sideways. Swipe, tap or click near
 the left or right edge, or use `←` `→`, `Page Up` `Page Down` or the space bar. Turning the
 device keeps your place. Continuous view stays one sheet that scrolls down.
 
