@@ -112,13 +112,14 @@ Type an address in **Add… → From GitHub** and press **Next**. The desktop ap
 
 ### Reading full screen
 
-Full screen shows the note and nothing else. A tap or a click on the middle of the note shows
-the top bar over it (to print, change the view or leave) and again hides it. On a touch
+Full screen shows the note and nothing else. A tap or a click on the note shows the top bar
+over it (to print, change the view or leave) and again hides it. The name of the note in the
+bar is a button: it brings the list of notes, to open another without leaving full screen. On a touch
 screen a tap on the middle of a note also enters full screen.
 
 In pages view full screen is a book: each page has the size of the screen, one at a
-time, and the pages turn sideways. Swipe, tap or click near
-the left or right edge, or use `←` `→`, `Page Up` `Page Down` or the space bar. Turning the
+time, and the pages turn sideways. Swipe, tap or click in the
+outer fifth of the screen on either side, or use `←` `→`, `Page Up` `Page Down` or the space bar. Turning the
 device keeps your place. Continuous view stays one sheet that scrolls down.
 
 The open note reloads by itself when the file changes on disk and keeps its scroll position.

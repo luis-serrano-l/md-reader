@@ -129,7 +129,8 @@ file busy".
   `--ui-scrim` (tested).
 - Full screen (`app.js`, "Full screen"): `.app.reading` on every platform, panels and bar
   hidden, plus the window's own full screen where there is one (`backend.setFullscreen`).
-  `.app.chrome` shows the bar over the note (tap on the middle). In pages view it is also
+  `.app.chrome` shows the bar over the note (tap on the note, outside the page-turn strips);
+  `.app.list` the list of notes over it (the note's name in the bar is a button). In pages view it is also
   `.app.book` (one page per screen): `fit()` gives the sheet `--book-w`,
   `--book-h` and a zoom, the pages are cut for that size and the desk scrolls sideways with
   scroll snap. `readingPlace()`, `showPlace()`, `turnPage()`, `updateSpy()` and

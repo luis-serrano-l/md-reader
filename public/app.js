@@ -149,6 +149,7 @@ function renderTree(rootId, nodes) {
       button.addEventListener('click', () => {
         openDoc(rootId, node.path, { push: true });
         if (isNarrow()) showPanel('sidebar', false);
+        app.classList.remove('list'); // the list shown over a note in full screen
       });
       list.append(el('li', {}, [button]));
     }
@@ -613,12 +614,20 @@ $('mdr-toggle-outline').addEventListener('click', () => showPanel('outline', !pa
 // A panel that lies over the note: a tap on the note puts it away. That tap does nothing
 // else: it must not also follow a link or press a button under it.
 document.querySelector('.main').addEventListener('click', (event) => {
-  const open = ['sidebar', 'outline'].filter((name) => overlays(name) && panelShown(name));
-  if (!open.length || isFull() || event.target.closest('#mdr-toggle-sidebar, #mdr-toggle-outline')) return;
+  if (event.target.closest('#mdr-toggle-sidebar, #mdr-toggle-outline, #mdr-crumb')) return;
+  const open = isFull() ? [] : ['sidebar', 'outline'].filter((name) => overlays(name) && panelShown(name));
+  if (!open.length && !app.classList.contains('list')) return;
   event.preventDefault();
   event.stopPropagation();
   for (const name of open) showPanel(name, false);
+  app.classList.remove('list');
 }, true);
+// The name of the open note brings the list of notes, to choose another. In full screen the
+// list lies over the note (`.list`) until a note is chosen or the note is tapped.
+crumb.addEventListener('click', () => {
+  if (isFull()) app.classList.toggle('list');
+  else showPanel('sidebar', !panelShown('sidebar'));
+});
 // On a touch screen the outline over the note has done its work once a heading is chosen.
 outline.addEventListener('click', (event) => {
   if (event.target.closest('a') && outlineOverlays() && isTouch()) showPanel('outline', false);
@@ -833,7 +842,7 @@ function setReading(on) {
   if (on === isFull()) return;
   const place = readingPlace();
   app.classList.toggle('reading', on);
-  app.classList.remove('chrome');
+  app.classList.remove('chrome', 'list');
   setIcon(fullscreenButton, on ? 'shrink' : 'expand');
   fullscreenButton.setAttribute('aria-pressed', String(on));
   showThemeColor();
@@ -876,8 +885,10 @@ document.addEventListener('keydown', (event) => {
 });
 
 // Taps and clicks on the note itself (not on a link, and not the end of selecting text).
-// In full screen: the middle shows or hides the top bar; in book mode the outer quarters turn
-// the page. On a touch screen, outside full screen, the middle of the note enters it.
+// In full screen: the note shows or hides the top bar, at any height; in book mode a strip
+// along each side (EDGE of the width) turns the page instead. On a touch screen, outside
+// full screen, the middle of the note enters it.
+const EDGE = 0.2;
 desk.addEventListener('click', (event) => {
   if (event.button !== 0 || event.defaultPrevented || !state.current) return;
   if (event.target.closest('a, button, input, summary') || !window.getSelection().isCollapsed) return;
@@ -887,8 +898,8 @@ desk.addEventListener('click', (event) => {
   const middle = x > 1 / 3 && x < 2 / 3 && y > 0.2 && y < 0.8;
   if (!isFull()) {
     if (middle && isTouch()) toggleFullscreen();
-  } else if (isBook() && !app.classList.contains('chrome') && (x < 0.25 || x > 0.75)) turnPage(x < 0.25 ? -1 : 1);
-  else app.classList.toggle('chrome', middle && !app.classList.contains('chrome'));
+  } else if (isBook() && !app.classList.contains('chrome') && (x < EDGE || x > 1 - EDGE)) turnPage(x < EDGE ? -1 : 1);
+  else app.classList.toggle('chrome');
 });
 
 // ---------- Sources from GitHub ----------
