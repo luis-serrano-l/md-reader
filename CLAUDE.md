@@ -132,10 +132,12 @@ file busy".
   `.app.chrome` shows the bar over the note (tap on the note, outside the page-turn strips);
   `.app.list` the list of notes over it (the note's name in the bar is a button). In pages view it is also
   `.app.book` (one page per screen): `fit()` gives the sheet `--book-w`,
-  `--book-h` and a zoom, the pages are cut for that size and the desk scrolls sideways with
+  `--book-h` and the reader's zoom (a wide screen gets wider margins, not larger text), the pages are cut for that size and the desk scrolls sideways with
   scroll snap. `readingPlace()`, `showPlace()`, `turnPage()`, `updateSpy()` and
   `updatePageInfo()` each have a book branch; a new helper that scrolls needs one too.
   `.app.reading` rules name every `no-sidebar`/`no-outline` combination to win over them.
+- Copy buttons of code blocks (`addCopyButtons()` in `app.js`) are added after every layout,
+  never to the rendered HTML, so `paginate()` measures without them; print hides them.
 - `public/app.js`: all front-end behaviour. Element ids start with `mdr-`; heading ids in notes
   start with `h-`, so the two never collide.
 

@@ -137,13 +137,14 @@
 
 /* Book mode (full screen in pages view, see app.js): the pages lie side by side and each one
    has the size of the screen; --book-w and --book-h are set by fit().
-   The margins follow that size, since a percentage would be taken from the whole row of pages. */
+   The margins follow that size, since a percentage would be taken from the whole row of pages;
+   on a screen wider than a sheet they grow, so the lines keep the length they have on paper. */
 .app.book .sheet.paged { display: flex; width: max-content; max-width: none; }
 .app.book .sheet.paged > .page {
   --pad-y: clamp(24px, min(calc(var(--book-w) * 0.105), calc(var(--book-h) * 0.08)), var(--margin-y));
   flex: none; width: var(--book-w); height: var(--book-h); min-height: 0; aspect-ratio: auto;
   padding: max(var(--pad-y), calc(env(safe-area-inset-top) + 10px))
-           clamp(16px, calc((var(--book-w) - 340px) * 0.3), var(--margin-x))
+           max(clamp(16px, calc((var(--book-w) - 340px) * 0.3), var(--margin-x)), calc((var(--book-w) - var(--page-width)) / 2 + var(--margin-x)))
            max(var(--pad-y), calc(env(safe-area-inset-bottom) + 22px));
   scroll-snap-align: start; scroll-margin-top: 0;
 }

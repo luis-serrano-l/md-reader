@@ -104,10 +104,11 @@ Type an address in **Add → From GitHub** and press **Next**. The desktop app n
 | Control | What it does |
 |---|---|
 | Panel, left edge of the bar | Show or hide the list of notes |
-| − 100% + | Zoom the note |
+| − 100% + | Zoom the note, in full screen too (`Ctrl` with `+`, `-` or `0` in the desktop app) |
 | Printer | Print the note, or save it as a PDF from the print dialog |
 | Sliders | View (continuous or pages), fonts and colours. In pages view `Page Up` / `Page Down` move one page |
 | Four corners, or `F` | Full screen on or off (`Esc` also leaves; `F11` too in the desktop app) |
+| Two sheets, top right of a code block | Copy the code (shown when the pointer is on the block; not printed) |
 | Panel, right edge of the bar | Show or hide the outline. Below 1400px of width it lies over the note |
 
 ### Reading full screen

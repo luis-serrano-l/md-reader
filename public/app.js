@@ -406,6 +406,59 @@ async function showPages() {
   }
 }
 
+// Code blocks: a button in the corner copies the code. It is added to the laid-out note, never
+// to the rendered HTML, so the pages are cut without it; print hides it (app.css).
+function addCopyButtons() {
+  for (const pre of sheet.querySelectorAll('pre:not(.cont)')) {
+    const button = el('button', { type: 'button', className: 'copy-btn', title: 'Copy the code' }, [icon('copy')]);
+    button.setAttribute('aria-label', 'Copy the code');
+    pre.append(button);
+  }
+}
+const pieceText = (pre) => [...pre.childNodes].filter((node) => !node.classList?.contains('copy-btn')).map((node) => node.textContent).join('');
+// The text of a code block. In pages view a block cut by a page goes on at the top of the next.
+function codeText(pre) {
+  let text = pieceText(pre);
+  for (let piece = pre; ;) {
+    const body = piece.parentElement;
+    const next = body.matches('.page-body') && piece === body.lastElementChild && body.closest('.page').nextElementSibling?.querySelector('.page-body > :first-child');
+    if (!next || !next.matches('pre.cont')) break;
+    text += (text.endsWith('\n') ? '' : '\n') + pieceText(next);
+    piece = next;
+  }
+  return text.replace(/\n$/, '');
+}
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // No clipboard access for the page (an older web view): copy a selection instead.
+    const area = el('textarea', { value: text, className: 'copy-area', readOnly: true });
+    document.body.append(area);
+    area.select();
+    const done = document.execCommand('copy');
+    area.remove();
+    if (!done) throw new Error('The code could not be copied.');
+  }
+}
+sheet.addEventListener('click', (event) => {
+  const button = event.target.closest('.copy-btn');
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation(); // not a tap on the note
+  copyText(codeText(button.parentElement)).then(
+    () => {
+      button.replaceChildren(icon('check'));
+      button.classList.add('done');
+      setTimeout(() => {
+        button.replaceChildren(icon('copy'));
+        button.classList.remove('done');
+      }, 1500);
+    },
+    (err) => ask('The code could not be copied', err.message),
+  );
+});
+
 // One layout at a time. `keepPlace` stays at the block being read, `place` goes to one read
 // earlier; `after` runs once the note is on the sheet (to scroll). `paged` can be forced
 // (printing uses one sheet).
@@ -415,6 +468,7 @@ function layout({ paged = state.paged, keepPlace = false, place, after } = {}) {
     const at = place !== undefined ? place : keepPlace ? readingPlace() : undefined;
     if (paged && state.html) await showPages();
     else showContinuous();
+    addCopyButtons();
     if (at !== undefined) showPlace(at);
     after?.();
     lastWidth = sheet.getBoundingClientRect().width;
@@ -589,14 +643,17 @@ sheet.addEventListener('click', (event) => {
 const ZOOM_STEPS = [0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.4, 1.6, 1.8, 2];
 function setZoom(value) {
   const zoom = Math.min(2, Math.max(0.7, value));
-  if (!isFull()) sheet.style.zoom = zoom; // full screen fits the note itself; this one comes back after
   $('mdr-zoom-reset').textContent = `${Math.round(zoom * 100)}%`;
   store.set('zoom', zoom);
+  if (isFull()) return void refit(); // the book's pages are cut again for the new size
+  sheet.style.zoom = zoom;
   updateSpy();
 }
 const currentZoom = () => Number(sheet.style.zoom) || 1;
-$('mdr-zoom-in').addEventListener('click', () => setZoom(ZOOM_STEPS.find((z) => z > currentZoom() + 0.001) ?? 2));
-$('mdr-zoom-out').addEventListener('click', () => setZoom([...ZOOM_STEPS].reverse().find((z) => z < currentZoom() - 0.001) ?? 0.7));
+const zoomIn = () => setZoom(ZOOM_STEPS.find((z) => z > currentZoom() + 0.001) ?? 2);
+const zoomOut = () => setZoom([...ZOOM_STEPS].reverse().find((z) => z < currentZoom() - 0.001) ?? 0.7);
+$('mdr-zoom-in').addEventListener('click', zoomIn);
+$('mdr-zoom-out').addEventListener('click', zoomOut);
 $('mdr-zoom-reset').addEventListener('click', () => setZoom(1));
 
 // The two panels: the list of notes ('sidebar') and the outline. Where a panel lies over the
@@ -785,11 +842,10 @@ window.addEventListener('afterprint', () => {
 // note simply has the whole window). F, F11 or the button toggles it; Esc leaves. A tap or a
 // click on the middle of the note shows the top bar over it, and again hides it.
 //
-// Continuous view stays one sheet, as wide as the window. Pages view becomes a book: every
+// Continuous view stays one sheet, at the reader's zoom. Pages view becomes a book: every
 // page has the size of the screen (always one at a time) and is cut for that size,
 // and the pages are turned sideways: swipe, the arrow keys, or a tap near an edge.
 
-const PAGE_WIDTH_PX = 816; // 8.5in: --page-width of the sheet in study.css
 let fitKey = 'window';
 // Sizes the sheet for where it is shown. Returns whether anything changed.
 function fit() {
@@ -798,16 +854,11 @@ function fit() {
   const width = desk.clientWidth;
   const height = desk.clientHeight;
   let key = 'window';
-  let zoom = Math.min(2, Math.max(0.7, Number(store.get('zoom', 1)) || 1));
-  if (book) {
-    // Never beyond the largest zoom the buttons give, however wide the window: the page then
-    // keeps its own margins, so the lines stay a readable length.
-    zoom = Math.min(2, Math.max(1, width / PAGE_WIDTH_PX));
-    key = `book:${width}:${height}`;
-  } else if (reading) {
-    zoom = Math.min(2, width / Math.min(PAGE_WIDTH_PX, width));
-    key = `sheet:${zoom}`;
-  }
+  // The reader's own zoom, in full screen too: a wide screen gets wider margins, not larger
+  // letters (study.css).
+  const zoom = Math.min(2, Math.max(0.7, Number(store.get('zoom', 1)) || 1));
+  if (book) key = `book:${width}:${height}:${zoom}`;
+  else if (reading) key = `sheet:${zoom}`;
   if (key === fitKey) return false;
   fitKey = key;
   app.classList.toggle('book', book);
@@ -875,6 +926,15 @@ for (const name of ['fullscreenchange', 'webkitfullscreenchange']) {
   });
 }
 document.addEventListener('keydown', (event) => {
+  // Ctrl with +, - or 0 in the desktop app, whose window has no zoom of its own (a browser
+  // keeps its own, which also sizes the shell).
+  if (backend.kind === 'tauri' && (event.ctrlKey || event.metaKey) && !event.altKey && ['+', '=', '-', '0'].includes(event.key)) {
+    event.preventDefault();
+    if (event.key === '0') setZoom(1);
+    else if (event.key === '-') zoomOut();
+    else zoomIn();
+    return;
+  }
   if (event.ctrlKey || event.metaKey || event.altKey || document.querySelector('dialog[open]')) return;
   if (event.target.closest?.('input, textarea, select')) return;
   if (event.key === 'f' || event.key === 'F') toggleFullscreen();
