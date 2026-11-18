@@ -39,22 +39,26 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-// The app's own files: the kept copy at once, refreshed in the background for the next visit.
+// The app's own files: the published copy first, so a new version shows at the next opening,
+// asked for past the browser's own cache (a static host lets that keep a file for minutes).
+// The kept copy answers when the network fails or takes longer than WAIT; the answer from
+// the network is still kept when it comes.
+const WAIT = 2500;
 async function shell(event, request) {
   const cache = await caches.open(SHELL);
   const key = request.mode === 'navigate' ? './' : request;
   const kept = await cache.match(key, { ignoreSearch: true });
-  const fresh = fetch(request.mode === 'navigate' ? './' : request)
+  const fresh = fetch(request.mode === 'navigate' ? './' : request.url, { cache: 'no-cache' })
     .then((res) => {
-      if (res.ok) cache.put(key, res.clone());
+      if (!res.ok) return null;
+      event.waitUntil(cache.put(key, res.clone()));
       return res;
     })
     .catch(() => null);
-  if (kept) {
-    event.waitUntil(fresh);
-    return kept;
-  }
-  return (await fresh) || Response.error();
+  if (!kept) return (await fresh) || Response.error();
+  event.waitUntil(fresh);
+  const late = new Promise((resolve) => setTimeout(resolve, WAIT, null));
+  return (await Promise.race([fresh, late])) || kept;
 }
 
 // Notes, lists of notes and images: GitHub first, the kept copy when GitHub cannot be reached.
