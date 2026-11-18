@@ -223,7 +223,7 @@ function showNotice(title, text, { error = false, action } = {}) {
 
 function showWelcome() {
   if (!state.roots.length) {
-    const add = el('button', { type: 'button', className: 'btn primary', textContent: 'Add…' });
+    const add = el('button', { type: 'button', className: 'btn primary', textContent: 'Add notes' });
     add.addEventListener('click', () => $('mdr-sources').showModal());
     showNotice('Choose what to read', 'md-reader opens only the Markdown (.md) files of the folders and files you add.', { action: add });
   } else showNotice('Pick a note', 'Choose a Markdown file from the list on the left.');

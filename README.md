@@ -24,7 +24,7 @@ Nothing to install from a store, nothing to pay.
    (Android).
 3. Safari: **Share → Add to Home Screen**. Chrome: **⋮ → Install app**. Open the app from its
    icon from then on; a plain Safari tab can lose its saved notes after a week without use.
-4. **Add… → From GitHub**, type `owner/repository`, press **Next** and tick the folders to
+4. **Add → From GitHub**, type `owner/repository`, press **Next** and tick the folders to
    add.
 5. Private repositories: paste a token in the same dialog and press **Save token** first. It
    is saved once and used for every repository added later. Make it at GitHub → Settings →
@@ -57,7 +57,7 @@ The release build writes the program to `src-tauri/target/release/md-reader` and
 
 ## Use
 
-1. Click **Add…** and pick a kind of source. Any mix of them can be in the list at once.
+1. Click **Add** (the folder with a plus, above the list) and pick a kind of source. Any mix of them can be in the list at once.
 
    | Source | What is added |
    |---|---|
@@ -73,7 +73,7 @@ The release build writes the program to `src-tauri/target/release/md-reader` and
 
 ### GitHub sources
 
-Type an address in **Add… → From GitHub** and press **Next**. The desktop app needs `git`
+Type an address in **Add → From GitHub** and press **Next**. The desktop app needs `git`
 (2.27 or newer) on the machine.
 
 | Address | What happens |
