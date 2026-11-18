@@ -8,6 +8,7 @@
   --ink: #2b2b2b;
   --strong: #000;
   --h1: #14365d;
+  --h1-rule: var(--h1);       /* the rules above and below the title */
   --h2: #1d4f8a;
   --h2-rule: #c9d6e6;
   --h3: #2a6a4f;
@@ -36,6 +37,8 @@
   --font-head: "Noto Sans", "DejaVu Sans", sans-serif;
   --font-mono: "Fira Code", "DejaVu Sans Mono", monospace;
   --size-body: 11.5pt;
+  --leading: 1.6;             /* line height and letter spacing of the text: a dark look opens them up */
+  --tracking: 0;
   --page-width: 8.5in;
   --margin-y: 0.9in;
   --margin-x: 1.4in;
@@ -50,14 +53,15 @@
   color: var(--ink);
   font-family: var(--font-body);
   font-size: var(--size-body);
-  line-height: 1.6;
+  line-height: var(--leading);
+  letter-spacing: var(--tracking);
   overflow-wrap: break-word;
 }
 
 .sheet h1, .sheet h2, .sheet h3, .sheet h4 { font-family: var(--font-head); line-height: 1.25; scroll-margin-top: 16px; }
-.sheet h1 { font-size: 21pt; color: var(--h1); margin: 26pt 0 16pt; padding-bottom: 6pt; border-bottom: 2px solid var(--h1); }
+.sheet h1 { font-size: 21pt; color: var(--h1); margin: 26pt 0 16pt; padding-bottom: 6pt; border-bottom: 2px solid var(--h1-rule); }
 /* The PDF title sits between two rules (pandoc's empty title block drew the upper one). */
-.sheet > h1:first-child, .sheet.paged > .page:first-child > .page-body > h1:first-child { padding-top: 16pt; border-top: 2px solid var(--h1); }
+.sheet > h1:first-child, .sheet.paged > .page:first-child > .page-body > h1:first-child { padding-top: 16pt; border-top: 2px solid var(--h1-rule); }
 .sheet h2 { font-size: 16pt; color: var(--h2); margin: 26pt 0 8pt; padding-bottom: 3pt; border-bottom: 1px solid var(--h2-rule); }
 .sheet h3 { font-size: 13pt; color: var(--h3); margin: 18pt 0 5pt; }
 .sheet h4 { font-size: 11.5pt; color: var(--h4); margin: 14pt 0 4pt; }
@@ -76,9 +80,9 @@
 .sheet blockquote { margin: 8pt 0 12pt; padding: 6pt 12pt; background: var(--quote-bg); border-left: 4px solid var(--quote-bar); }
 .sheet blockquote p { margin: 0 0 4pt; }
 
-.sheet code { font-family: var(--font-mono); font-size: 9.8pt; background: var(--code-bg); color: var(--code-ink);
+.sheet code { font-family: var(--font-mono); font-size: 9.8pt; letter-spacing: 0; background: var(--code-bg); color: var(--code-ink);
               padding: 0.5pt 3pt; border-radius: 2pt; }
-.sheet pre { font-family: var(--font-mono); font-size: 9.5pt; line-height: 1.45; background: var(--pre-bg);
+.sheet pre { font-family: var(--font-mono); font-size: 9.5pt; line-height: 1.45; letter-spacing: 0; background: var(--pre-bg);
              border-left: 4px solid var(--accent); padding: 8pt 10pt; margin: 6pt 0 14pt; white-space: pre-wrap; }
 .sheet pre code { background: none; color: var(--pre-ink); padding: 0; font-size: inherit; border-radius: 0; }
 
@@ -130,3 +134,18 @@
 .sheet.paged .page-body > :first-child { margin-top: 0; }
 .sheet.paged .page-body > :last-child { margin-bottom: 0; }
 .sheet li.cont { list-style: none; }   /* the rest of an item cut by a page: no second mark */
+
+/* Book mode (full screen in pages view, see app.js): the pages lie side by side and each one
+   has the size of the screen, or of half of it; --book-w and --book-h are set by fit().
+   The margins follow that size, since a percentage would be taken from the whole row of pages. */
+.app.book .sheet.paged { display: flex; width: max-content; max-width: none; }
+.app.book .sheet.paged > .page {
+  --pad-y: clamp(24px, min(calc(var(--book-w) * 0.105), calc(var(--book-h) * 0.08)), var(--margin-y));
+  flex: none; width: var(--book-w); height: var(--book-h); min-height: 0; aspect-ratio: auto;
+  padding: max(var(--pad-y), calc(env(safe-area-inset-top) + 10px))
+           clamp(16px, calc((var(--book-w) - 340px) * 0.3), var(--margin-x))
+           max(var(--pad-y), calc(env(safe-area-inset-bottom) + 22px));
+  scroll-snap-align: start; scroll-margin-top: 0;
+}
+.app.book.spread .sheet.paged > .page:nth-child(even) { scroll-snap-align: none; border-left: 1px solid var(--sheet-edge); }
+.app.book .sheet.paged > .page::after { bottom: max(calc(var(--pad-y) * 0.3), env(safe-area-inset-bottom)); }

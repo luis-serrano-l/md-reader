@@ -3,6 +3,8 @@
 import { backend } from './backend.js';
 import { createRenderer } from './render.js';
 import { paginate, currentPage } from './pages.js';
+import { icon, setIcon, fillIcons } from './icons.js';
+import { isRef } from './github-url.js';
 import { PRESETS, FONTS, SIZE, COLORS, DEFAULTS, normalize, variables, shownColor } from './settings.js';
 
 const render = createRenderer({
@@ -21,8 +23,18 @@ const sheet = $('mdr-sheet');
 const notice = $('mdr-notice');
 const outline = $('mdr-outline');
 const crumb = $('mdr-crumb');
-// Below this width the list of sources lies over the note instead of beside it (see app.css).
-const isNarrow = () => window.matchMedia('(max-width: 1000px)').matches;
+// Below these widths a panel lies over the note instead of beside it (see app.css): the list
+// of notes on a tablet held upright or a phone, the outline already on a tablet on its side.
+const NARROW = window.matchMedia('(max-width: 1000px)');
+const OUTLINE_OVER = window.matchMedia('(max-width: 1400px)');
+const isNarrow = () => NARROW.matches;
+const outlineOverlays = () => OUTLINE_OVER.matches;
+const isTouch = () => window.matchMedia('(pointer: coarse)').matches;
+const calm = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Full screen (`reading`): the note alone. With pages view it is also `book`: the pages lie
+// side by side and are turned sideways. See "Full screen" below.
+const isFull = () => app.classList.contains('reading');
+const isBook = () => app.classList.contains('book') && sheet.classList.contains('paged');
 
 const state = { roots: [], current: null, stopWatch: null, headings: [], html: '', toc: [], paged: false, layoutRun: 0 };
 
@@ -78,26 +90,18 @@ async function loadRoots() {
         details.open ? set.delete(root.id) : set.add(root.id);
         store.set('closed', [...set]);
       });
-      const remove = el('button', {
-        type: 'button',
-        className: 'icon-btn root-remove',
-        textContent: '×',
-        title: `Remove ${root.name} from md-reader (nothing is deleted from where it came from)`,
-      });
-      remove.setAttribute('aria-label', `Remove ${root.name}`);
-      remove.addEventListener('click', () => removeRoot(root));
-      const wrap = el('div', { className: 'root' }, [details, remove]);
-      if (root.github) {
-        const update = el('button', {
-          type: 'button',
-          className: 'icon-btn root-remove root-update',
-          textContent: '↻',
-          title: `Update ${root.name} from GitHub`,
-        });
-        update.setAttribute('aria-label', `Update ${root.name} from GitHub`);
-        update.addEventListener('click', () => updateRoot(root, update));
-        wrap.append(update);
-      }
+      const actions = el('div', { className: 'root-actions' });
+      const action = (name, className, title, run) => {
+        const button = el('button', { type: 'button', className: `icon-btn ${className}`, title }, [icon(name)]);
+        button.setAttribute('aria-label', title);
+        button.addEventListener('click', () => run(button));
+        actions.append(button);
+      };
+      if (hasFolders(root)) action('folders', 'root-folders', `Add or remove folders of ${root.github.repo}`, () => openFolders(root));
+      if (root.github) action('refresh', 'root-update', `Update ${root.name} from GitHub`, (button) => updateRoot(root, button));
+      action('trash', 'root-remove', `Remove ${root.name} from md-reader (nothing is deleted from where it came from)`, () => removeRoot(root));
+      const wrap = el('div', { className: 'root' }, [details, actions]);
+      wrap.style.setProperty('--actions', actions.children.length); // room for them on a touch screen
       wrap.dataset.root = root.id;
       root.el = wrap;
       try {
@@ -116,6 +120,9 @@ async function loadRoots() {
 
 // What kind of source an entry is, shown next to its name. A plain folder needs no label.
 const kindLabel = (root) => (root.github ? 'GitHub' : root.kind === 'file' ? 'file' : '');
+// A folder of a repository, on a branch whose name an address can carry: its repository can
+// be listed again, to add other folders of it or to remove some.
+const hasFolders = (root) => !!root.github && root.kind !== 'file' && isRef(root.github.ref);
 const sourceLine = (root) =>
   root.github ? [root.github.repo, root.github.ref, root.github.sub].filter(Boolean).join(' · ') : shortPath(root.path);
 
@@ -141,7 +148,7 @@ function renderTree(rootId, nodes) {
       button.dataset.path = node.path;
       button.addEventListener('click', () => {
         openDoc(rootId, node.path, { push: true });
-        if (isNarrow()) app.classList.add('no-sidebar');
+        if (isNarrow()) showPanel('sidebar', false);
       });
       list.append(el('li', {}, [button]));
     }
@@ -286,7 +293,7 @@ async function openDoc(root, path, { push = false, hash = '', keepScroll = false
       if (state.html !== doc.html) return; // another note was opened meanwhile
       const target = hash && document.getElementById(decodeURIComponent(hash.slice(1)));
       if (keepScroll && sameDoc) showPlace(place);
-      else if (target) target.scrollIntoView();
+      else if (target) showNode(target);
       else showPlace(store.get(scrollKey(root, doc.path), null));
     },
   });
@@ -310,26 +317,48 @@ const places = () => [...sheet.querySelectorAll(PLACES)];
 
 // The first block on screen and how far its top is from the top of the desk, so the same block
 // can be shown at the same height after a new layout, in either view. null: the top of the note.
+// In book mode it is the first block of the first page on screen.
 function readingPlace() {
-  if (desk.scrollTop < 4) return null;
-  const top = desk.getBoundingClientRect().top;
+  const box = desk.getBoundingClientRect();
   const all = places();
-  const index = all.findIndex((node) => node.getBoundingClientRect().bottom > top + 1);
-  return index < 0 ? null : { index, offset: Math.round(all[index].getBoundingClientRect().top - top) };
+  if (isBook()) {
+    if (desk.scrollLeft < 4) return null;
+    const index = all.findIndex((node) => node.getBoundingClientRect().right > box.left + 1);
+    return index < 0 ? null : { index, offset: 0 };
+  }
+  if (desk.scrollTop < 4) return null;
+  const index = all.findIndex((node) => node.getBoundingClientRect().bottom > box.top + 1);
+  return index < 0 ? null : { index, offset: Math.round(all[index].getBoundingClientRect().top - box.top) };
 }
 
 function showPlace(place) {
-  if (typeof place === 'number') desk.scrollTop = place; // stored by an older version
+  const book = isBook();
+  // The desk moves one way only: whatever the other view left behind is undone.
+  if (book) desk.scrollTop = 0;
+  else desk.scrollLeft = 0;
+  if (typeof place === 'number' && !book) desk.scrollTop = place; // stored by an older version
   const node = place && typeof place === 'object' && places()[place.index];
   if (!node) {
-    if (!place) desk.scrollTop = 0;
+    if (!place) desk.scrollTo(0, 0);
     return;
   }
+  if (book) return showPageOf(node);
   const box = node.getBoundingClientRect();
   // A long block may have been cut by a page since: never scroll past its own end.
   const offset = Math.max(Number(place.offset) || 0, 24 - box.height);
   desk.scrollTop += box.top - desk.getBoundingClientRect().top - offset;
 }
+
+// Book mode: brings the page that holds `node` on screen (with its neighbour, where two show).
+function showPageOf(node) {
+  const pages = [...sheet.children];
+  const index = pages.indexOf(node.closest('.page'));
+  if (index < 0) return;
+  const first = pages[index - (index % spread)];
+  desk.scrollLeft += first.getBoundingClientRect().left - desk.getBoundingClientRect().left;
+}
+
+const showNode = (node) => (isBook() ? showPageOf(node) : node.scrollIntoView());
 
 function whenImagesLoaded(within, limit) {
   const images = [...within.querySelectorAll('img')];
@@ -375,19 +404,20 @@ async function showPages() {
   renderOutline(state.toc);
   // A picture that arrives after the wait above changes the height of its page.
   for (const img of sheet.querySelectorAll('img')) {
-    if (!img.complete) img.addEventListener('load', relayoutSoon, { once: true });
+    if (!img.complete) img.addEventListener('load', () => relayoutSoon(), { once: true });
   }
 }
 
-// One layout at a time. `keepPlace` stays at the block being read; `after` runs once the note
-// is on the sheet (to scroll). `paged` can be forced (printing uses one sheet).
+// One layout at a time. `keepPlace` stays at the block being read, `place` goes to one read
+// earlier; `after` runs once the note is on the sheet (to scroll). `paged` can be forced
+// (printing uses one sheet).
 let layoutQueue = Promise.resolve();
-function layout({ paged = state.paged, keepPlace = false, after } = {}) {
+function layout({ paged = state.paged, keepPlace = false, place, after } = {}) {
   const task = layoutQueue.then(async () => {
-    const place = keepPlace ? readingPlace() : null;
+    const at = place !== undefined ? place : keepPlace ? readingPlace() : undefined;
     if (paged && state.html) await showPages();
     else showContinuous();
-    if (keepPlace) showPlace(place);
+    if (at !== undefined) showPlace(at);
     after?.();
     lastWidth = sheet.getBoundingClientRect().width;
     updateSpy();
@@ -398,38 +428,55 @@ function layout({ paged = state.paged, keepPlace = false, after } = {}) {
 }
 
 const relayout = () => (state.current ? layout({ keepPlace: true }) : Promise.resolve());
+// Cuts the pages again in a moment. `ifResized`: only if the sheet still has another width
+// than at the last layout (a layout that ran meanwhile has dealt with it).
 let relayoutTimer = null;
-function relayoutSoon() {
+let relayoutAnyway = false;
+function relayoutSoon(ifResized = false) {
+  relayoutAnyway ||= !ifResized;
   clearTimeout(relayoutTimer);
   relayoutTimer = setTimeout(() => {
-    if (sheet.classList.contains('paged')) relayout();
+    const anyway = relayoutAnyway;
+    relayoutAnyway = false;
+    if (!sheet.classList.contains('paged')) return;
+    if (anyway || Math.abs(sheet.getBoundingClientRect().width - lastWidth) >= 1) relayout();
   }, 300);
 }
 
 // A narrower or wider sheet (small window, zoom) wraps the text differently: cut the pages again.
+// Not in book mode, where the pages have the size of the screen (fit() below sees to it).
 let lastWidth = 0;
 new ResizeObserver(() => {
-  const width = sheet.getBoundingClientRect().width;
-  if (!sheet.classList.contains('paged') || Math.abs(width - lastWidth) < 1) return;
-  lastWidth = width;
-  relayoutSoon();
+  if (!sheet.classList.contains('paged') || isBook()) return;
+  if (Math.abs(sheet.getBoundingClientRect().width - lastWidth) >= 1) relayoutSoon(true);
 }).observe(sheet);
+
+// Book mode: the first page on screen, counted from 0. A page counts once half of it is in.
+function firstShownPage() {
+  const box = desk.getBoundingClientRect();
+  return currentPage(sheet, box.left + box.width / (2 * spread), true) - 1;
+}
 
 function updatePageInfo() {
   const info = $('mdr-page-info');
   const total = sheet.classList.contains('paged') ? sheet.children.length : 0;
   info.hidden = !total;
   if (!total) return;
+  const short = window.matchMedia('(max-width: 760px)').matches;
   const box = desk.getBoundingClientRect();
-  const page = currentPage(sheet, box.top + box.height / 2);
-  info.textContent = window.matchMedia('(max-width: 760px)').matches ? `${page} / ${total}` : `page ${page} of ${total}`;
+  const first = isBook() ? firstShownPage() + 1 : currentPage(sheet, box.top + box.height / 2);
+  const last = isBook() ? Math.min(total, first + spread - 1) : first;
+  const shown = last > first ? `${first}-${last}` : `${first}`;
+  info.textContent = short ? `${shown} / ${total}` : `${last > first ? 'pages' : 'page'} ${shown} of ${total}`;
 }
 
 function setView(paged) {
+  const place = readingPlace();
   state.paged = paged;
   store.set('view', paged ? 'pages' : 'continuous');
   showView();
-  return relayout();
+  fit(); // in full screen, pages view is book mode
+  return state.current ? layout({ place }) : Promise.resolve();
 }
 // The choice sits in the "View, fonts and colours" panel.
 function showView() {
@@ -439,9 +486,25 @@ function showView() {
 $('mdr-view-continuous').addEventListener('click', () => state.paged && setView(false));
 $('mdr-view-pages').addEventListener('click', () => state.paged || setView(true));
 
-// Page Up and Page Down move one page at a time in pages view, or one screen when a page is
-// taller than the window (large zoom), so no part of a page is skipped.
+// One page further or back. In book mode: the next or the previous screen (one page, or two
+// side by side). Otherwise one page down or up, or one screen when a page is taller than the
+// window (large zoom), so no part of a page is skipped.
+let turning = null; // book mode: where a turn that is still gliding will end
+let turnTimer = null;
 function turnPage(step) {
+  if (isBook()) {
+    const pages = [...sheet.children];
+    const shown = firstShownPage();
+    const from = turning ?? shown - (shown % spread);
+    let index = Math.min(Math.max(from + step * spread, 0), pages.length - 1);
+    index -= index % spread;
+    turning = index;
+    clearTimeout(turnTimer);
+    turnTimer = setTimeout(() => (turning = null), 500);
+    const left = desk.scrollLeft + pages[index].getBoundingClientRect().left - desk.getBoundingClientRect().left;
+    desk.scrollTo({ left, behavior: calm() ? 'auto' : 'smooth' });
+    return;
+  }
   const top = desk.getBoundingClientRect().top + 12;
   const screen = desk.clientHeight - 40;
   const tops = [...sheet.children].map((page) => page.getBoundingClientRect().top);
@@ -453,12 +516,16 @@ function turnPage(step) {
     desk.scrollTop -= previous === undefined ? screen : Math.min(screen, top - previous);
   }
 }
+// Page Up and Page Down in pages view; in book mode also the arrows and the space bar.
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'PageDown' && event.key !== 'PageUp') return;
   if (!sheet.classList.contains('paged') || event.ctrlKey || event.metaKey || event.altKey) return;
-  if (document.querySelector('dialog[open]') || event.target.closest?.('input, textarea, select')) return;
+  if (document.querySelector('dialog[open]') || event.target.closest?.('input, textarea, select, button, a')) return;
+  const keys = { PageDown: 1, PageUp: -1 };
+  if (isBook()) Object.assign(keys, { ArrowRight: 1, ArrowLeft: -1, ' ': event.shiftKey ? -1 : 1 });
+  const step = keys[event.key];
+  if (!step) return;
   event.preventDefault();
-  turnPage(event.key === 'PageDown' ? 1 : -1);
+  turnPage(step);
 });
 
 // ---------- Outline ----------
@@ -479,10 +546,14 @@ function renderOutline(toc) {
 
 function updateSpy() {
   if (!state.headings.length) return;
-  const line = desk.getBoundingClientRect().top + 60;
+  const box = desk.getBoundingClientRect();
+  const book = isBook();
+  // Passed: above a line near the top of the desk; in book mode, on a page that is on screen
+  // or before it.
+  const passed = (node) => (book ? node.getBoundingClientRect().left < box.right - 1 : node.getBoundingClientRect().top <= box.top + 60);
   let current = state.headings[0];
   for (const h of state.headings) {
-    if (h.target.getBoundingClientRect().top <= line) current = h;
+    if (passed(h.target)) current = h;
     else break;
   }
   for (const h of state.headings) h.link.classList.toggle('current', h === current);
@@ -525,7 +596,7 @@ sheet.addEventListener('click', (event) => {
 const ZOOM_STEPS = [0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.4, 1.6, 1.8, 2];
 function setZoom(value) {
   const zoom = Math.min(2, Math.max(0.7, value));
-  sheet.style.zoom = zoom;
+  if (!isFull()) sheet.style.zoom = zoom; // full screen fits the note itself; this one comes back after
   $('mdr-zoom-reset').textContent = `${Math.round(zoom * 100)}%`;
   store.set('zoom', zoom);
   updateSpy();
@@ -535,20 +606,35 @@ $('mdr-zoom-in').addEventListener('click', () => setZoom(ZOOM_STEPS.find((z) => 
 $('mdr-zoom-out').addEventListener('click', () => setZoom([...ZOOM_STEPS].reverse().find((z) => z < currentZoom() - 0.001) ?? 0.7));
 $('mdr-zoom-reset').addEventListener('click', () => setZoom(1));
 
-function togglePanel(name) {
-  const hidden = app.classList.toggle(`no-${name}`);
-  store.set(`no-${name}`, hidden);
+// The two panels: the list of notes ('sidebar') and the outline. Where a panel lies over the
+// note it is only opened for a moment, so that is not remembered as the user's choice.
+const overlays = (name) => (name === 'sidebar' ? isNarrow() : outlineOverlays());
+const panelShown = (name) => !app.classList.contains(`no-${name}`);
+function showPanel(name, shown, keep = !overlays(name)) {
+  app.classList.toggle(`no-${name}`, !shown);
+  $(`mdr-toggle-${name}`).setAttribute('aria-pressed', String(shown));
+  if (keep) store.set(`no-${name}`, !shown);
 }
-$('mdr-toggle-sidebar').addEventListener('click', () => togglePanel('sidebar'));
-// On a narrow window the list lies over the note (app.css): a tap on the note puts it away.
-// That tap does nothing else: it must not also follow a link or press a button under it.
+const panelAtStart = (name) => !overlays(name) && !store.get(`no-${name}`, false);
+$('mdr-toggle-sidebar').addEventListener('click', () => showPanel('sidebar', !panelShown('sidebar')));
+$('mdr-toggle-outline').addEventListener('click', () => showPanel('outline', !panelShown('outline')));
+// A panel that lies over the note: a tap on the note puts it away. That tap does nothing
+// else: it must not also follow a link or press a button under it.
 document.querySelector('.main').addEventListener('click', (event) => {
-  if (!isNarrow() || app.classList.contains('no-sidebar') || event.target.closest('#mdr-toggle-sidebar')) return;
+  const open = ['sidebar', 'outline'].filter((name) => overlays(name) && panelShown(name));
+  if (!open.length || isFull() || event.target.closest('#mdr-toggle-sidebar, #mdr-toggle-outline')) return;
   event.preventDefault();
   event.stopPropagation();
-  app.classList.add('no-sidebar');
+  for (const name of open) showPanel(name, false);
 }, true);
-$('mdr-toggle-outline').addEventListener('click', () => togglePanel('outline'));
+// On a touch screen the outline over the note has done its work once a heading is chosen.
+outline.addEventListener('click', (event) => {
+  if (event.target.closest('a') && outlineOverlays() && isTouch()) showPanel('outline', false);
+});
+// The window crosses one of the widths (turned tablet, resized window): a panel that would
+// now lie over the note is put away; one that has its own column again is as it was chosen.
+NARROW.addEventListener('change', () => showPanel('sidebar', panelAtStart('sidebar'), false));
+OUTLINE_OVER.addEventListener('change', () => showPanel('outline', panelAtStart('outline'), false));
 
 // ---------- Fonts and colours ----------
 // A setting is only ever a CSS custom property on the sheet (study.css) or the page (app.css).
@@ -573,7 +659,14 @@ function applySettings() {
   }
   // The printed page is filled with the paper colour (see @media print in app.css).
   page.style.setProperty('--print-paper', getComputedStyle(sheet).getPropertyValue('--paper').trim());
+  showThemeColor();
   updateSpy();
+}
+
+// The colour a browser gives its own bars around the page: the shell's, or the paper's in full screen.
+function showThemeColor() {
+  const style = getComputedStyle(document.documentElement);
+  $('mdr-theme-color').content = style.getPropertyValue(isFull() ? '--print-paper' : '--ui-bg').trim();
 }
 
 function changeSettings(patch) {
@@ -686,41 +779,105 @@ window.addEventListener('afterprint', () => {
 });
 
 // ---------- Full screen ----------
-// Full screen with the app unchanged: panels and top bar stay. F, F11 or the button toggles it;
-// Esc leaves.
+// The note alone: the panels and the top bar are put away, and the window itself goes full
+// screen where it can (the desktop app, a browser; an iPhone has no such thing, and there the
+// note simply has the whole window). F, F11 or the button toggles it; Esc leaves. A tap or a
+// click on the middle of the note shows the top bar over it, and again hides it.
+//
+// Continuous view stays one sheet, as wide as the window. Pages view becomes a book: every
+// page has the size of the screen (two side by side on a wide one) and is cut for that size,
+// and the pages are turned sideways: swipe, the arrow keys, or a tap near an edge.
 
-// Where the browser has no full screen for pages (iPad and iPhone, above all as an installed
-// app), the button gives the note the whole window instead: panels and top bar are hidden and
-// a small button brings them back.
-const exitReading = $('mdr-exit-reading');
-function setReading(on) {
-  if (on === app.classList.contains('reading')) return;
-  const place = desk.scrollTop / (desk.scrollHeight || 1);
-  app.classList.toggle('reading', on);
-  exitReading.hidden = !on;
-  fitReading();
-  desk.scrollTop = place * desk.scrollHeight;
-}
-// In that mode the sheet is as wide as the window, edge to edge; the chosen zoom comes back after.
-function fitReading() {
-  if (!app.classList.contains('reading')) return void (sheet.style.zoom = store.get('zoom', 1));
-  // Never beyond the largest zoom the buttons give, however wide the window.
-  sheet.style.zoom = Math.min(2, desk.clientWidth / Math.min(PAGE_WIDTH_PX, desk.clientWidth));
-}
 const PAGE_WIDTH_PX = 816; // 8.5in: --page-width of the sheet in study.css
-// The desk's width also changes when the device is turned or a scroll bar appears.
-new ResizeObserver(() => {
-  if (app.classList.contains('reading')) fitReading();
-  updatePageInfo();
-}).observe(desk);
-async function toggleFullscreen() {
-  if (app.classList.contains('reading')) return setReading(false);
-  const was = !!(document.fullscreenElement || document.webkitFullscreenElement);
-  const full = await Promise.resolve(backend.toggleFullscreen()).catch(() => false);
-  if (backend.kind !== 'tauri' && !was && !full) setReading(true);
+let spread = 1; // pages on screen at once in book mode
+let fitKey = 'window';
+// Sizes the sheet for where it is shown. Returns whether anything changed.
+function fit() {
+  const reading = isFull();
+  const book = reading && state.paged;
+  const width = desk.clientWidth;
+  const height = desk.clientHeight;
+  let key = 'window';
+  let zoom = Math.min(2, Math.max(0.7, Number(store.get('zoom', 1)) || 1));
+  let across = 1;
+  if (book) {
+    // A wide screen shows two pages, so lines stay a readable length (a phone on its side too).
+    across = width > height && width >= 700 ? 2 : 1;
+    // Never beyond the largest zoom the buttons give, however wide the window.
+    zoom = Math.min(2, Math.max(1, width / across / PAGE_WIDTH_PX));
+    key = `book:${across}:${width}:${height}`;
+  } else if (reading) {
+    zoom = Math.min(2, width / Math.min(PAGE_WIDTH_PX, width));
+    key = `sheet:${zoom}`;
+  }
+  if (key === fitKey) return false;
+  fitKey = key;
+  spread = across;
+  app.classList.toggle('book', book);
+  app.classList.toggle('spread', book && across === 2);
+  sheet.style.zoom = zoom;
+  if (book) {
+    sheet.style.setProperty('--book-w', `${width / across / zoom}px`);
+    sheet.style.setProperty('--book-h', `${height / zoom}px`);
+  } else {
+    sheet.style.removeProperty('--book-w');
+    sheet.style.removeProperty('--book-h');
+  }
+  return true;
 }
-$('mdr-fullscreen').addEventListener('click', toggleFullscreen);
-exitReading.addEventListener('click', () => setReading(false));
+// Fits the sheet and shows `place` again (read before anything changed).
+function refit(place = readingPlace()) {
+  if (!fit() || !state.current) return;
+  if (state.paged) return void layout({ place });
+  showPlace(place);
+  updateSpy();
+}
+// The desk changes size when the device is turned, the window resized, or full screen arrives.
+let fitTimer = null;
+new ResizeObserver(() => {
+  updatePageInfo();
+  if (!isFull()) return;
+  clearTimeout(fitTimer);
+  fitTimer = setTimeout(() => refit(), 120);
+}).observe(desk);
+
+const fullscreenButton = $('mdr-fullscreen');
+function setReading(on) {
+  if (on === isFull()) return;
+  const place = readingPlace();
+  app.classList.toggle('reading', on);
+  app.classList.remove('chrome');
+  setIcon(fullscreenButton, on ? 'shrink' : 'expand');
+  fullscreenButton.setAttribute('aria-pressed', String(on));
+  showThemeColor();
+  refit(place);
+}
+let fullscreenBusy = false;
+async function toggleFullscreen() {
+  if (fullscreenBusy) return;
+  fullscreenBusy = true;
+  try {
+    if (isFull()) {
+      setReading(false);
+      await backend.setFullscreen(false);
+    } else {
+      // Asked for first: a browser only grants it straight from the tap or the key.
+      await backend.setFullscreen(true).catch(() => false);
+      setReading(true);
+    }
+  } catch {
+    /* the window stays as it is; the note has its room either way */
+  } finally {
+    fullscreenBusy = false;
+  }
+}
+fullscreenButton.addEventListener('click', toggleFullscreen);
+// A browser leaves its full screen by itself (Esc, a gesture): the panels come back with it.
+for (const name of ['fullscreenchange', 'webkitfullscreenchange']) {
+  document.addEventListener(name, () => {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) setReading(false);
+  });
+}
 document.addEventListener('keydown', (event) => {
   if (event.ctrlKey || event.metaKey || event.altKey || document.querySelector('dialog[open]')) return;
   if (event.target.closest?.('input, textarea, select')) return;
@@ -728,10 +885,23 @@ document.addEventListener('keydown', (event) => {
   else if (event.key === 'F11' && backend.kind === 'tauri') {
     event.preventDefault();
     toggleFullscreen();
-  } else if (event.key === 'Escape') {
-    setReading(false);
-    backend.exitFullscreen?.().catch(() => {}); // a browser leaves by itself
-  }
+  } else if (event.key === 'Escape' && isFull()) toggleFullscreen();
+});
+
+// Taps and clicks on the note itself (not on a link, and not the end of selecting text).
+// In full screen: the middle shows or hides the top bar; in book mode the outer quarters turn
+// the page. On a touch screen, outside full screen, the middle of the note enters it.
+desk.addEventListener('click', (event) => {
+  if (event.button !== 0 || event.defaultPrevented || !state.current) return;
+  if (event.target.closest('a, button, input, summary') || !window.getSelection().isCollapsed) return;
+  const box = desk.getBoundingClientRect();
+  const x = (event.clientX - box.left) / box.width;
+  const y = (event.clientY - box.top) / box.height;
+  const middle = x > 1 / 3 && x < 2 / 3 && y > 0.2 && y < 0.8;
+  if (!isFull()) {
+    if (middle && isTouch()) toggleFullscreen();
+  } else if (isBook() && !app.classList.contains('chrome') && (x < 0.25 || x > 0.75)) turnPage(x < 0.25 ? -1 : 1);
+  else app.classList.toggle('chrome', middle && !app.classList.contains('chrome'));
 });
 
 // ---------- Sources from GitHub ----------
@@ -741,6 +911,8 @@ const names = (list) => (list.length > 8 ? `${list.slice(0, 8).join(', ')} and $
 // Brings the downloaded copy up to date and says which notes changed.
 async function updateRoot(root, button) {
   button.disabled = true;
+  const row = button.closest('.root');
+  row?.classList.add('busy'); // its buttons stay in view while it runs
   try {
     const { added, changed, removed } = await backend.updateGithub(root.id);
     const parts = [
@@ -761,6 +933,7 @@ async function updateRoot(root, button) {
     await ask(`${root.name} could not be updated`, err.message);
   } finally {
     button.disabled = false;
+    row?.classList.remove('busy');
   }
 }
 
@@ -786,12 +959,15 @@ async function showTokenState() {
 }
 
 // The dialog has two steps: the address (and the token), then the folders of that repository.
-const picking = { url: '', picked: new Set(), busy: false };
+// For a repository that is already in the list it opens at the second step: `have` then maps
+// each of its folders that is a source to that source ('' is the whole repository), and
+// ticking or unticking adds or removes sources.
+const picking = { url: '', picked: new Set(), busy: false, have: null };
 
 function showGithubStep(folders) {
   $('mdr-github-step-address').hidden = folders;
   $('mdr-github-step-folders').hidden = !folders;
-  $('mdr-github-back').hidden = !folders;
+  $('mdr-github-back').hidden = !folders || !!picking.have;
   $('mdr-github-add').textContent = folders ? 'Add' : 'Next';
   githubError.textContent = '';
 }
@@ -804,6 +980,8 @@ function setGithubBusy(busy) {
 }
 
 async function openGithub() {
+  picking.have = null;
+  $('mdr-github-title').textContent = 'Add from GitHub';
   showGithubStep(false);
   setGithubBusy(false);
   $('mdr-github-busy').textContent = '';
@@ -843,25 +1021,54 @@ function chosenFolders() {
   return [...picking.picked].filter((path) => ![...picking.picked].some((other) => other !== path && path.startsWith(`${other}/`)));
 }
 
+const covers = (parent, path) => parent !== path && (parent === '' || path.startsWith(`${parent}/`));
+// For a repository already in the list: the folders to download and the ones to take out. A
+// folder that is a source goes when it is unticked, or when a folder around it is newly added.
+function folderChanges() {
+  const have = picking.have || new Map();
+  const add = chosenFolders().filter((path) => !have.has(path));
+  const remove = [...have.keys()].filter((path) => !picking.picked.has(path) || add.some((parent) => covers(parent, path)));
+  return { add, remove };
+}
+const folderName = (path) => path || 'the whole repository';
+const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
 // A folder inside a ticked one is shown ticked and cannot be changed: it comes with its parent.
 function syncFolderChoices() {
   const chosen = chosenFolders();
   for (const box of $('mdr-github-folders').querySelectorAll('input')) {
-    const covered = chosen.some((path) => path !== box.value && (path === '' || box.value.startsWith(`${path}/`)));
+    const covered = chosen.some((path) => covers(path, box.value));
     box.checked = covered || picking.picked.has(box.value);
     box.disabled = covered;
   }
-  $('mdr-github-add').textContent = chosen.length > 1 ? `Add ${chosen.length} folders` : 'Add';
-  $('mdr-github-add').disabled = chosen.length === 0;
+  const button = $('mdr-github-add');
+  if (picking.have) {
+    const { add, remove } = folderChanges();
+    button.textContent =
+      add.length && remove.length ? `Add ${add.length}, remove ${remove.length}`
+      : add.length ? `Add ${count(add.length, 'folder')}`
+      : remove.length ? `Remove ${count(remove.length, 'folder')}`
+      : 'No change';
+    button.disabled = !add.length && !remove.length;
+    return;
+  }
+  button.textContent = chosen.length > 1 ? `Add ${chosen.length} folders` : 'Add';
+  button.disabled = chosen.length === 0;
 }
 
 function showFolders(listing) {
-  picking.picked = new Set();
+  const have = picking.have;
+  picking.picked = new Set(have ? have.keys() : []);
   $('mdr-github-repo').textContent =
-    `${listing.repo} · ${listing.ref}. Tick what to add; each ticked folder becomes its own source, with its sub-folders.` +
+    (have
+      ? `${listing.repo}, branch ${listing.ref}. The ticked folders are in your list. Tick another to add it, untick one to remove it.`
+      : `${listing.repo} · ${listing.ref}. Tick what to add; each ticked folder becomes its own source, with its sub-folders.`) +
     (listing.truncated ? ' The repository is large: not every folder is listed, and the counts may be too low.' : '');
-  const rows = [{ path: '', count: listing.total }, ...listing.folders].map(({ path, count }) => {
-    const item = el('li');
+  const listed = [{ path: '', count: listing.total }, ...listing.folders];
+  // A folder in the list that GitHub no longer shows can still be removed here.
+  const gone = have ? [...have.keys()].filter((path) => !listed.some((row) => row.path === path)) : [];
+  const rows = [...listed, ...gone.map((path) => ({ path, count: null }))].map(({ path, count: notes }) => {
+    const item = el('li', { className: have?.has(path) ? 'have' : '' });
     const label = el('label');
     const box = el('input');
     box.type = 'checkbox';
@@ -874,10 +1081,11 @@ function showFolders(listing) {
     const depth = path ? path.split('/').length : 0;
     label.style.paddingLeft = `${8 + depth * 18}px`;
     label.title = path || listing.repo;
+    const text = notes === null ? 'not on GitHub any more' : noteCount(notes);
     label.append(
       box,
       el('span', { className: 'folder-name', textContent: path ? path.slice(path.lastIndexOf('/') + 1) : 'Whole repository' }),
-      el('span', { className: 'folder-count', textContent: noteCount(count) }),
+      el('span', { className: 'folder-count', textContent: have?.has(path) ? `in your list, ${text}` : text }),
     );
     item.append(label);
     return item;
@@ -885,6 +1093,31 @@ function showFolders(listing) {
   $('mdr-github-folders').replaceChildren(...rows);
   showGithubStep(true);
   syncFolderChoices();
+}
+
+// The folders of a repository that is already in the list, to add others or remove some.
+async function openFolders(root) {
+  const { repo, ref } = root.github;
+  picking.url = `https://github.com/${repo}/tree/${ref}`;
+  picking.have = new Map(
+    state.roots.filter((r) => hasFolders(r) && r.github.repo === repo && r.github.ref === ref).map((r) => [r.github.sub || '', r]),
+  );
+  picking.picked = new Set(picking.have.keys());
+  $('mdr-github-title').textContent = `Folders of ${repo}`;
+  $('mdr-github-repo').textContent = '';
+  $('mdr-github-folders').replaceChildren();
+  showGithubStep(true);
+  githubDialog.showModal();
+  setGithubBusy(true);
+  $('mdr-github-busy').textContent = 'Reading the repository…';
+  try {
+    showFolders(await backend.githubFolders(picking.url));
+  } catch (err) {
+    githubError.textContent = err.message;
+  } finally {
+    setGithubBusy(false);
+    syncFolderChoices();
+  }
 }
 
 async function addGithub() {
@@ -897,11 +1130,22 @@ async function addGithub() {
   }
   githubError.textContent = '';
   if (!folders && $('mdr-github-token').value.trim() && !(await saveToken())) return; // a pasted token is meant to be used
+  const have = folders ? picking.have : null;
+  const gone = have ? folderChanges().remove : [];
+  if (gone.length) {
+    const yes = await ask(
+      gone.length === 1 ? `Remove "${folderName(gone[0])}" from md-reader?` : `Remove ${gone.length} folders from md-reader?`,
+      `${gone.length > 1 ? `${names(gone.map(folderName))}. ` : ''}${backend.kind === 'web' ? '' : 'The downloaded copy is deleted. '}The repository on GitHub is not touched.`,
+      'Remove',
+    );
+    if (!yes) return;
+  }
   setGithubBusy(true);
   const busy = $('mdr-github-busy');
   const added = [];
+  let removed = 0;
   try {
-    let subs = folders ? chosenFolders() : null;
+    let subs = !folders ? null : have ? folderChanges().add : chosenFolders();
     if (!subs) {
       busy.textContent = 'Reading the repository…';
       const listing = await backend.githubFolders(url);
@@ -916,18 +1160,34 @@ async function addGithub() {
     }
     for (const [i, sub] of subs.entries()) {
       busy.textContent = subs.length > 1 ? `Downloading ${sub} (${i + 1} of ${subs.length})…` : 'Downloading…';
-      added.push(await backend.addGithub(url, sub));
-      picking.picked.delete(sub); // not added a second time if a later one fails
+      const root = await backend.addGithub(url, sub);
+      added.push(root);
+      // Not added a second time if a later one fails.
+      if (have) have.set(sub, root);
+      else picking.picked.delete(sub);
+    }
+    // Removed only once everything new is there.
+    for (const sub of gone) {
+      busy.textContent = `Removing ${folderName(sub)}…`;
+      const root = have.get(sub);
+      await backend.removeRoot(root.id);
+      have.delete(sub);
+      removed += 1;
+      if (state.current?.root === root.id) {
+        closeDoc();
+        history.replaceState(null, '', location.pathname);
+      }
     }
     $('mdr-github-url').value = '';
     githubDialog.close();
   } catch (err) {
-    githubError.textContent = added.length ? `${added.length} added, then: ${err.message}` : err.message;
+    const done = [added.length && `${added.length} added`, removed && `${removed} removed`].filter(Boolean).join(', ');
+    githubError.textContent = done ? `${done}, then: ${err.message}` : err.message;
   } finally {
     setGithubBusy(false);
     if (!$('mdr-github-step-folders').hidden) syncFolderChoices();
   }
-  if (!added.length) return;
+  if (!added.length && !removed) return;
   await loadRoots();
   if (!githubDialog.open && added.length === 1 && added[0].kind === 'file') await openDoc(added[0].id, added[0].name, { push: true }).catch(() => {});
   else if (!state.current) showWelcome();
@@ -1010,8 +1270,9 @@ window.addEventListener('popstate', () => {
 });
 
 async function start() {
-  if (store.get('no-sidebar', false) || isNarrow()) app.classList.add('no-sidebar');
-  if (store.get('no-outline', false)) app.classList.add('no-outline');
+  fillIcons();
+  showPanel('sidebar', panelAtStart('sidebar'), false);
+  showPanel('outline', panelAtStart('outline'), false);
   setZoom(store.get('zoom', 1));
   state.paged = store.get('view', 'continuous') === 'pages';
   showView();

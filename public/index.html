@@ -2,9 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>md-reader</title>
+  <!-- Added to the Home Screen of an iPhone or iPad: its own window, drawn up to the top edge. -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="md-reader">
+  <meta name="theme-color" id="mdr-theme-color" content="#f3efe6">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="study.css">
 </head>
@@ -19,19 +26,21 @@
     </aside>
 
     <div class="main">
-      <header class="bar">
-        <button type="button" class="icon-btn" id="mdr-toggle-sidebar" title="Show or hide the folder list" aria-label="Show or hide the folder list">☰</button>
+      <header class="bar" id="mdr-bar">
+        <button type="button" class="icon-btn" id="mdr-toggle-sidebar" data-icon="panel-left" title="Show or hide the list of notes" aria-label="List of notes" aria-pressed="true"></button>
         <div class="crumb" id="mdr-crumb"></div>
         <span class="page-info" id="mdr-page-info" hidden></span>
         <div class="zoom" role="group" aria-label="Zoom">
-          <button type="button" class="icon-btn" id="mdr-zoom-out" title="Smaller" aria-label="Smaller">−</button>
+          <button type="button" class="icon-btn" id="mdr-zoom-out" data-icon="minus" title="Smaller" aria-label="Smaller"></button>
           <button type="button" class="zoom-value" id="mdr-zoom-reset" title="Back to 100%">100%</button>
-          <button type="button" class="icon-btn" id="mdr-zoom-in" title="Larger" aria-label="Larger">+</button>
+          <button type="button" class="icon-btn" id="mdr-zoom-in" data-icon="plus" title="Larger" aria-label="Larger"></button>
         </div>
-        <button type="button" class="icon-btn" id="mdr-print" title="Print or save as PDF" aria-label="Print">⎙</button>
-        <button type="button" class="icon-btn" id="mdr-settings-open" title="View, fonts and colours" aria-label="View, fonts and colours">⚙</button>
-        <button type="button" class="icon-btn" id="mdr-fullscreen" title="Full screen on or off (F). Esc also leaves." aria-label="Full screen">⛶</button>
-        <button type="button" class="icon-btn" id="mdr-toggle-outline" title="Show or hide the outline" aria-label="Show or hide the outline">≡</button>
+        <span class="bar-sep" aria-hidden="true"></span>
+        <button type="button" class="icon-btn" id="mdr-print" data-icon="printer" title="Print or save as PDF" aria-label="Print"></button>
+        <button type="button" class="icon-btn" id="mdr-settings-open" data-icon="sliders" title="View, fonts and colours" aria-label="View, fonts and colours"></button>
+        <button type="button" class="icon-btn" id="mdr-fullscreen" data-icon="expand" title="Full screen on or off (F). Esc also leaves." aria-label="Full screen" aria-pressed="false"></button>
+        <span class="bar-sep" aria-hidden="true"></span>
+        <button type="button" class="icon-btn" id="mdr-toggle-outline" data-icon="panel-right" title="Show or hide the outline" aria-label="Outline" aria-pressed="true"></button>
       </header>
       <div class="desk" id="mdr-desk" tabindex="-1">
         <article class="sheet" id="mdr-sheet" hidden></article>
@@ -41,8 +50,6 @@
 
     <aside class="outline" id="mdr-outline" aria-label="Outline"></aside>
   </div>
-
-  <button type="button" class="exit-reading" id="mdr-exit-reading" title="Show the panels again (Esc)" aria-label="Leave full screen" hidden>✕</button>
 
   <dialog class="picker ask" id="mdr-sources" aria-labelledby="mdr-sources-title">
     <form method="dialog" class="picker-form">
@@ -74,7 +81,7 @@
       </div>
       <div class="picker-step" id="mdr-github-step-folders" hidden>
         <p class="picker-help" id="mdr-github-repo"></p>
-        <ul class="folder-choices" id="mdr-github-folders" aria-label="Folders to add"></ul>
+        <ul class="folder-choices" id="mdr-github-folders" aria-label="Folders of the repository"></ul>
       </div>
       <p class="picker-error" id="mdr-github-error" role="alert"></p>
       <div class="picker-actions">

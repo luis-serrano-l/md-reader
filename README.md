@@ -31,7 +31,13 @@ Nothing to install from a store, nothing to pay.
    Developer settings → Fine-grained tokens, with access to the repositories to read and the
    permission **Contents: Read-only**.
 
-Notes that were opened once can be read again without a network. **↻** fetches new versions.
+Notes that were opened once can be read again without a network. The update button of a
+source (two arrows in a circle) fetches new versions.
+
+A tap on the middle of a note gives it the whole screen; in pages view the pages then turn
+sideways, like a book (see [Reading full screen](#reading-full-screen)). Opened from the Home
+Screen icon, the page reaches the top edge of the screen. The row with the clock stays on an
+iPhone: a web page cannot hide it, only an app from the App Store can.
 
 ## Run as a desktop app
 
@@ -62,7 +68,7 @@ The release build writes the program to `src-tauri/target/release/md-reader` and
    Folders and files on this computer are for the desktop app, which opens the system's
    dialog. The web version offers GitHub only.
 2. Click a note to read it.
-3. Remove a source with the **×** next to its name. Local files stay on disk; for a GitHub
+3. Remove a source with the bin button next to its name. Local files stay on disk; for a GitHub
    source the downloaded copy is deleted and the repository is not touched.
 
 ### GitHub sources
@@ -79,10 +85,12 @@ Type an address in **Add… → From GitHub** and press **Next**. The desktop ap
 
 - Each ticked folder becomes its own entry in the list, with its sub-folders, and is updated
   or removed on its own. A folder inside a ticked one comes with it.
+- The folder button on such an entry opens the list of folders again, with the ones you have
+  ticked: tick another to add it, untick one to remove it.
 
 - Only what is asked for is downloaded (a shallow, sparse clone), into
   `~/.local/share/md-reader/repos/`. The notes are then readable offline.
-- **↻** on the entry updates the copy and lists the notes that are new, changed or removed.
+- The update button on the entry (two arrows in a circle) updates the copy and lists the notes that are new, changed or removed.
 - The copy is read-only from the app's side: md-reader never commits or pushes. A branch name
   with a `/` in it cannot be given in an address.
 - **Private repositories**: paste a GitHub token in the same dialog and press **Save token**,
@@ -95,12 +103,23 @@ Type an address in **Add… → From GitHub** and press **Next**. The desktop ap
 
 | Control | What it does |
 |---|---|
-| ☰ | Show or hide the folder list |
+| Panel, left edge of the bar | Show or hide the list of notes |
 | − 100% + | Zoom the note |
-| ⎙ | Print the note, or save it as a PDF from the print dialog |
-| ⚙ | View (continuous or pages), fonts and colours. In pages view `Page Up` / `Page Down` move one page |
-| ⛶ or `F` | Full screen on or off (`Esc` also leaves; `F11` too in the desktop app). On an iPad or iPhone, which have no full screen for pages, the note takes the whole window and **✕** brings the panels back |
-| ≡ | Show or hide the outline |
+| Printer | Print the note, or save it as a PDF from the print dialog |
+| Sliders | View (continuous or pages), fonts and colours. In pages view `Page Up` / `Page Down` move one page |
+| Four corners, or `F` | Full screen on or off (`Esc` also leaves; `F11` too in the desktop app) |
+| Panel, right edge of the bar | Show or hide the outline. Below 1400px of width it lies over the note |
+
+### Reading full screen
+
+Full screen shows the note and nothing else. A tap or a click on the middle of the note shows
+the top bar over it (to print, change the view or leave) and again hides it. On a touch
+screen a tap on the middle of a note also enters full screen.
+
+In pages view full screen is a book: each page has the size of the screen, two side by side
+on a screen that is wider than tall, and the pages turn sideways. Swipe, tap or click near
+the left or right edge, or use `←` `→`, `Page Up` `Page Down` or the space bar. Turning the
+device keeps your place. Continuous view stays one sheet that scrolls down.
 
 The open note reloads by itself when the file changes on disk and keeps its scroll position.
 Links to other `.md` files open inside the app; web links open in a new tab (in the
@@ -137,16 +156,16 @@ and the page installs as an app on a phone or tablet.
 - **Private repositories**: the same token field. In this version the token is kept in the
   browser's storage on that device and sent to `api.github.com` only; anyone who can use that
   browser profile can use it, so give it read-only access to the few repositories you need.
-- Without a token GitHub allows 60 list requests an hour per address (adding a source and ↻
+- Without a token GitHub allows 60 list requests an hour per address (adding a source and updating
   each use one or two). Opening notes does not count.
 - Forgetting the token, or removing the last source of a repository, also deletes the notes
   kept from it for offline reading.
-- Not there: local folders and files, reloading when a file changes (use ↻).
+- Not there: local folders and files, reloading when a file changes (use the update button).
 
 ## The look
 
-The ⚙ button opens **View, fonts and colours**: continuous or pages view, three looks (Study,
-Plain white, Dark with true black for OLED screens), the fonts of the text, headings and code,
+The sliders button opens **View, fonts and colours**: continuous or pages view, three looks
+(Study, Plain white, and Dark: warm charcoal paper with light headings, made for reading at night), the fonts of the text, headings and code,
 the text size, and four colours (paper, text, headings, accent). Everything is remembered.
 
 On a tablet held upright or a phone, the list of sources lies over the note and a tap on the
@@ -172,6 +191,7 @@ remembered, and switching keeps the place being read.
 | `public/` | Front end: plain HTML, CSS and JavaScript, no build step |
 | `public/render.js` | Markdown to HTML, in the page |
 | `public/pages.js` | Pages view: cuts the rendered note into Letter pages |
+| `public/icons.js` | The icons of the buttons, drawn as SVG |
 | `public/settings.js` | Fonts and colours: the looks, the font lists, checking of stored values |
 | `public/backend.js` | The one place that talks to the desktop app or to GitHub |
 | `public/web-backend.js`, `sw.js`, `manifest.webmanifest`, `icons/` | Web version: GitHub reader, offline cache, install data |

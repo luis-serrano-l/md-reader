@@ -8,7 +8,7 @@ const API = 'https://api.github.com';
 const RAW = 'https://raw.githubusercontent.com';
 const FILES = [
   './', 'app.js', 'app.css', 'study.css', 'render.js', 'backend.js', 'web-backend.js', 'github-url.js',
-  'settings.js', 'pages.js', 'vendor/markdown-it.min.js', 'vendor/markdown-it-task-lists.min.js',
+  'settings.js', 'pages.js', 'icons.js', 'vendor/markdown-it.min.js', 'vendor/markdown-it-task-lists.min.js',
   'vendor/highlight.min.js', 'favicon.svg', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 const IMAGE_TYPES = { svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };

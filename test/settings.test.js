@@ -33,3 +33,19 @@ test('a colour control shows the chosen colour, else the look\'s own', () => {
   assert.equal(shownColor({ preset: 'dark' }, 'paper'), PRESETS.dark.sheet['--paper']);
   assert.equal(shownColor({ preset: 'dark', colors: { paper: '#101010' } }, 'paper'), '#101010');
 });
+
+test('a look that colours the shell also colours its buttons, shadows and the status strip', () => {
+  for (const [name, look] of Object.entries(PRESETS)) {
+    if (!look.ui?.['--ui-bg']) continue;
+    for (const key of ['--ui-btn', '--ui-btn-hover', '--ui-shadow', '--ui-scrim']) assert.ok(look.ui[key], `${name} lacks ${key}`);
+  }
+});
+
+test('every value of a look is a colour, a number or a length', () => {
+  const value = /^(#[0-9a-f]{6}([0-9a-f]{2})?|-?\d+(\.\d+)?(em|px|pt)?)$/;
+  for (const [name, look] of Object.entries(PRESETS)) {
+    for (const [key, text] of [...Object.entries(look.sheet || {}), ...Object.entries(look.ui || {})]) {
+      assert.match(text, value, `${name} ${key}`);
+    }
+  }
+});

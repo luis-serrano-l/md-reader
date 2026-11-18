@@ -12,6 +12,9 @@ const okSegment = (part) => part !== '.' && part !== '..' && !part.startsWith('-
 // True for the path of a folder inside a repository that may be added on its own.
 export const isFolderPath = (sub) => typeof sub === 'string' && sub.length <= 1000 && sub.split('/').every(okSegment);
 
+// True for a branch name that an address can carry (see parseGithubUrl).
+export const isRef = (ref) => typeof ref === 'string' && REF.test(ref);
+
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const bad = (message) => fail(400, message);
 

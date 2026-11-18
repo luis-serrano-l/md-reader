@@ -11,28 +11,33 @@ export const PRESETS = {
       '--paper': '#ffffff', '--ink': '#222222', '--quote-bg': '#f5f5f5', '--code-bg': '#f2f2f2',
       '--pre-bg': '#f6f6f6', '--rule': '#d5d5d5', '--zebra': '#f8f8f8',
     },
-    ui: { '--ui-bg': '#f6f6f6', '--ui-bg-2': '#ececec', '--ui-line': '#dcdcdc', '--desk': '#e4e4e4' },
+    ui: {
+      '--ui-bg': '#f6f6f6', '--ui-bg-2': '#ececec', '--ui-line': '#dcdcdc', '--desk': '#e4e4e4',
+      '--ui-btn': '#e6e6e6', '--ui-btn-hover': '#d8d8d8', '--ui-shadow': '#0000002b', '--ui-scrim': '#00000066',
+    },
   },
-  // True black everywhere a surface is drawn: on an OLED screen black pixels are off, which
-  // gives the most contrast. Only text, thin lines and the hover/selection marks are lit.
+  // The study paper at night: three levels (desk, then paper, then the surfaces of code, quotes
+  // and tables), soft off-white text, and headings that stand apart from it by brightness as
+  // well as by hue. The text is set a little more open, which a serif needs on a dark ground.
   dark: {
-    label: 'Dark (true black)',
+    label: 'Dark',
     scheme: 'dark', // the browser's own controls (lists, scroll bars) follow
     sheet: {
-      '--paper': '#000000', '--ink': '#e2dfd7', '--strong': '#ffffff', '--h1': '#9cc4f5', '--h2': '#7fb0ea',
-      '--h2-rule': '#2c3a4d', '--h3': '#86c9a6', '--h4': '#d9a86a', '--accent': '#7fb0ea',
-      '--quote-bg': '#000000', '--quote-bar': '#b88a2e', '--code-bg': '#000000', '--code-ink': '#f0a3a3',
-      '--pre-bg': '#000000', '--pre-ink': '#e2e2e2', '--rule': '#3a3a3a', '--th-bg': '#000000',
-      '--th-ink': '#9cc4f5', '--zebra': '#000000', '--check-bg': '#000000', '--check-line': '#6c7684',
-      '--sheet-edge': '#262626',
-      '--hl-comment': '#8c897d', '--hl-keyword': '#9cc4f5', '--hl-string': '#86c9a6',
-      '--hl-number': '#f0a3a3', '--hl-title': '#d9a86a', '--hl-meta': '#b99ad6',
+      '--paper': '#1c1b18', '--ink': '#d3cec2', '--strong': '#f6f1e6', '--h1': '#f6f1e6', '--h1-rule': '#6fa8e6',
+      '--h2': '#8dbdf5', '--h2-rule': '#34455a', '--h3': '#8fd3ae', '--h4': '#e6b577', '--accent': '#8dbdf5',
+      '--quote-bg': '#25231d', '--quote-bar': '#d9a441', '--code-bg': '#2a2823', '--code-ink': '#f2a9a0',
+      '--pre-bg': '#242320', '--pre-ink': '#dedad0', '--rule': '#3b382f', '--th-bg': '#243140',
+      '--th-ink': '#cfe2fb', '--zebra': '#211f1c', '--check-bg': '#22201c', '--check-line': '#7b8696',
+      '--sheet-edge': '#2e2c26', '--leading': '1.68', '--tracking': '0.012em',
+      '--hl-comment': '#948f82', '--hl-keyword': '#8dbdf5', '--hl-string': '#8fd3ae',
+      '--hl-number': '#f2a9a0', '--hl-title': '#e6b577', '--hl-meta': '#c3a6e0',
     },
     ui: {
-      '--ui-bg': '#000000', '--ui-bg-2': '#1c1c1c', '--ui-line': '#2a2a2a', '--ui-ink': '#e2dfd7',
-      '--ui-muted': '#9a968b', '--ui-accent': '#3f78bd', '--ui-accent-hover': '#356aa9',
-      '--ui-active': '#12243a', '--ui-head': '#9cc4f5', '--ui-field': '#000000', '--desk': '#000000',
-      '--danger': '#f0a3a3',
+      '--ui-bg': '#181714', '--ui-bg-2': '#24221e', '--ui-line': '#33312a', '--ui-ink': '#e4dfd3',
+      '--ui-muted': '#a39e91', '--ui-accent': '#4f8fd6', '--ui-accent-ink': '#0d0f12', '--ui-accent-hover': '#63a0e4',
+      '--ui-active': '#1d2c3f', '--ui-head': '#a9cdf8', '--ui-field': '#22201c', '--desk': '#100f0d',
+      '--ui-btn': '#2b2925', '--ui-btn-hover': '#37342e', '--ui-status': '#100f0d',
+      '--ui-shadow': '#00000073', '--ui-scrim': '#000000a6', '--danger': '#f2a9a0',
     },
   },
 };

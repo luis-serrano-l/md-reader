@@ -20,6 +20,10 @@ inside Google's own frame and cannot serve a manifest or a service worker.
 **Desktop packages for macOS and Windows.** They have to be built on those systems. The token
 file's "only my user" permission is set on Linux and macOS only; Windows needs its own way.
 
+**An app for iPhone and iPad from the App Store.** The only way to hide the row with the clock
+on an iPhone and to read truly edge to edge. Tauri can build it, but it needs a Mac, Xcode and
+an Apple developer account.
+
 **Local folders in a browser**, if ever wanted again: a "serve on localhost" mode of the
 desktop program, not a second back end.
 
@@ -32,4 +36,6 @@ desktop program, not a second back end.
   tried in Chrome).
 - The desktop app cannot ask GitHub whether a token is accepted when it is saved (it has no
   HTTP library); a wrong token shows at the first download.
+- Full screen, book mode and the page under the clock on a real iPhone or iPad (tried in
+  Chrome with device emulation only).
 - Reloading a note in pages view when its file changes, and printing from the desktop window.

@@ -18,11 +18,10 @@
 //   readDoc(rootId, path)      -> { path, source }
 //   assetUrl(rootId, path)     -> URL of an image inside the folder
 //   watch(rootId, path, fn)    -> stop function; fn runs when the note changes on disk
-//   toggleFullscreen()
+//   setFullscreen(on)          -> whether the window (or the browser) is in full screen afterwards
 //   getSettings()              -> the stored fonts-and-colours object (may be empty)
 //   saveSettings(settings)
-// Only on desktop:  pickFolder(), pickFile() -> path or null (native dialog), openExternal(url),
-//                   exitFullscreen()
+// Only on desktop:  pickFolder(), pickFile() -> path or null (native dialog), openExternal(url)
 
 import { webBackend } from './web-backend.js';
 
@@ -69,8 +68,7 @@ function tauriBackend({ core, event }) {
     pickFolder: () => call('pick_folder'),
     pickFile: () => call('pick_file'),
     openExternal: (url) => call('open_external', { url }),
-    toggleFullscreen: () => call('set_fullscreen', {}),
-    exitFullscreen: () => call('set_fullscreen', { on: false }),
+    setFullscreen: (on) => call('set_fullscreen', { on: !!on }),
   };
 }
 

@@ -208,12 +208,14 @@ export function paginate(sheet) {
   return sheet.children.length;
 }
 
-// The page that holds the top of the visible area, counted from 1.
-export function currentPage(sheet, top) {
+// The page that holds the line `at` of the window, counted from 1: a height where the pages
+// are stacked, a distance from the left where they lie side by side (`sideways`).
+export function currentPage(sheet, at, sideways = false) {
   const pages = sheet.children;
   let current = 1;
   for (let i = 0; i < pages.length; i++) {
-    if (pages[i].getBoundingClientRect().top <= top) current = i + 1;
+    const box = pages[i].getBoundingClientRect();
+    if ((sideways ? box.left : box.top) <= at) current = i + 1;
     else break;
   }
   return current;

@@ -86,6 +86,8 @@ file busy".
   second half of a split block has class `cont`. `app.js` always lays the note out again from
   the rendered HTML (`layout()`), so a view change, a font change or printing never works on
   already-cut pages. It needs a real browser layout, so it has no unit test.
+- `public/icons.js`: the icons of the shell, as SVG path data. `icon(name)` builds the element
+  with DOM calls (no inline style); a button in `index.html` names its icon with `data-icon`.
 - `public/settings.js`: fonts and colours. Pure data and functions, tested in
   `test/settings.test.js`. A setting only ever becomes a CSS custom property; `normalize()`
   drops anything that is not a known look, a listed font, a size in range or a `#rrggbb`
@@ -121,9 +123,18 @@ file busy".
 - `public/app.css`: the shell (folder list, top bar, desk, outline, picker). The three panels
   have fixed grid columns; a hidden panel must not let another slide into its column. Up to
   1000px wide the list of sources lies over the note (`isNarrow()` in `app.js` uses the same
-  query); touch rules sit under `(hover: none)` and `(pointer: coarse)`. `.app.reading` is the
-  stand-in for full screen where the browser has none (iPad, iPhone): panels and bar hidden,
-  sheet zoomed to the window's width.
+  query); below 1400px the outline does too (`outlineOverlays()`); touch rules sit under `(hover: none)`
+  and `(pointer: coarse)`, short windows (a phone on its side) under `(max-height: 520px)`.
+  A look that sets `--ui-bg` also sets `--ui-btn`, `--ui-btn-hover`, `--ui-shadow` and
+  `--ui-scrim` (tested).
+- Full screen (`app.js`, "Full screen"): `.app.reading` on every platform, panels and bar
+  hidden, plus the window's own full screen where there is one (`backend.setFullscreen`).
+  `.app.chrome` shows the bar over the note (tap on the middle). In pages view it is also
+  `.app.book` (`.spread` with two pages across): `fit()` gives the sheet `--book-w`,
+  `--book-h` and a zoom, the pages are cut for that size and the desk scrolls sideways with
+  scroll snap. `readingPlace()`, `showPlace()`, `turnPage()`, `updateSpy()` and
+  `updatePageInfo()` each have a book branch; a new helper that scrolls needs one too.
+  `.app.reading` rules name every `no-sidebar`/`no-outline` combination to win over them.
 - `public/app.js`: all front-end behaviour. Element ids start with `mdr-`; heading ids in notes
   start with `h-`, so the two never collide.
 
