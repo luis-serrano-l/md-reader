@@ -5,7 +5,8 @@ installs as an app (PWA), published with GitHub Pages at
 <https://luis-serrano-l.github.io/md-reader/>. Both have the view, fonts and colours panel,
 printing to paper or PDF, continuous view and pages view. The desktop app reads local folders,
 single local files and GitHub folders or files side by side, with Update and a saved token for
-private repositories; the web version reads GitHub.
+private repositories; the web version reads GitHub. Both read the submodules inside a GitHub
+folder.
 
 The Node server that once served the page on localhost is gone: the desktop app is the only
 code that reads the disk.
@@ -29,6 +30,9 @@ desktop program, not a second back end.
 
 ## Not tried yet
 
+- Submodules in the web version against GitHub itself (tried in Chrome against a made-up
+  GitHub, and in the tests), and a private submodule with a real token in either version.
+  The desktop code downloaded and updated a public repository with a submodule.
 - A private repository with a real token, in the desktop app.
 - The web version with no network at all.
 - Adding from GitHub by typing in the desktop window, the folder list included (the same Rust

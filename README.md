@@ -93,6 +93,15 @@ Type an address in **Add → From GitHub** and press **Next**. The desktop app n
 - The update button on the entry (two arrows in a circle) updates the copy and lists the notes that are new, changed or removed.
 - The copy is read-only from the app's side: md-reader never commits or pushes. A branch name
   with a `/` in it cannot be given in an address.
+- **Submodules** inside a folder you add are read with it, those of submodules too: their
+  notes show where the repository has them, at the commit the repository names, and links and
+  images work across the border. The list of folders counts them. A single file reads none.
+  - Only submodules that are on GitHub are read; the address in `.gitmodules` may be an
+    `https://github.com/…` one, `git@github.com:…`, or relative (`../other.git`).
+  - A private submodule needs a saved token that may read *its* repository as well. A
+    fine-grained token is given per repository: add the submodule's repository to it.
+  - One that cannot be read is left out and named after adding and after each update; an
+    update tries it again. At most 30 submodules per source, 5 deep.
 - **Private repositories**: paste a GitHub token in the same dialog and press **Save token**,
   once; it is then used for every repository. A fine-grained token with read-only "Contents"
   access to the repositories is enough. The web version asks GitHub at once whether the token
@@ -139,6 +148,8 @@ desktop app, in your browser).
   directly in the home folder or at the top of the disk shows no images.
 - Paths with `..` and symlinks that lead outside an added folder are refused. A GitHub source
   never reads outside its downloaded copy, whatever links the repository holds.
+- The address of a submodule is text from the repository, so it is never handed on as it is:
+  only one that names a GitHub repository is used, and then only its owner and name.
 - Raw HTML inside a note is shown as text, not run.
 - Desktop app: the page can call only the app's own commands; it has no general file access.
 
@@ -159,7 +170,7 @@ and the page installs as an app on a phone or tablet.
   browser's storage on that device and sent to `api.github.com` only; anyone who can use that
   browser profile can use it, so give it read-only access to the few repositories you need.
 - Without a token GitHub allows 60 list requests an hour per address (adding a source and updating
-  each use one or two). Opening notes does not count.
+  each use one or two, plus one for every submodule). Opening notes does not count.
 - Forgetting the token, or removing the last source of a repository, also deletes the notes
   kept from it for offline reading.
 - Not there: local folders and files, reloading when a file changes (use the update button).

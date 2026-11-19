@@ -76,10 +76,18 @@ fn remove_root(state: State<'_, AppState>, id: String) -> CommandResult<()> {
     Ok(())
 }
 
+/// A source that was just added from GitHub, and the submodules in it that could not be read.
+#[derive(Serialize)]
+struct Added {
+    #[serde(flatten)]
+    root: RootInfo,
+    skipped: Vec<String>,
+}
+
 /// A folder or one `.md` file of a GitHub repository: downloaded, then added like a local one.
 /// The store is not locked while `git` runs.
 #[tauri::command]
-async fn add_github(state: State<'_, AppState>, url: String, sub: Option<String>) -> CommandResult<RootInfo> {
+async fn add_github(state: State<'_, AppState>, url: String, sub: Option<String>) -> CommandResult<Added> {
     let mut spec = github::parse_github_url(&url).map_err(message)?;
     if let Some(sub) = sub.filter(|s| !s.is_empty()) {
         spec = github::with_folder(spec, &sub).map_err(message)?;
@@ -89,6 +97,7 @@ async fn add_github(state: State<'_, AppState>, url: String, sub: Option<String>
     let got = blocking(move || github::download(&wanted, &config)).await?;
     let mut store = state.store.lock().unwrap();
     let kept = got.github.clone();
+    let skipped = got.skipped;
     let added = match spec.kind {
         roots::SourceKind::File => store.add_file(&got.target.to_string_lossy(), Some(got.github)),
         roots::SourceKind::Folder => store.add_github_folder(&got.target, got.github),
@@ -96,7 +105,7 @@ async fn add_github(state: State<'_, AppState>, url: String, sub: Option<String>
     if added.is_err() {
         github::discard_copy(&kept);
     }
-    added.map_err(message)
+    added.map(|root| Added { root, skipped }).map_err(message)
 }
 
 /// The folders of a repository that hold notes, to choose from before anything is downloaded.

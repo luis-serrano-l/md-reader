@@ -62,3 +62,72 @@ export function parseGithubUrl(input) {
   if (!sub || !/\.md$/i.test(sub)) throw fail(403, 'Only Markdown (.md) files can be added.');
   return { owner, repo, ref, sub, kind: 'file' };
 }
+
+// ---------- Submodules ----------
+
+// The repository that the address of a submodule names, as "owner/name", or null when it is
+// not one on GitHub. `parent` is the "owner/name" of the repository whose .gitmodules holds
+// the address: one like "../other.git" is relative to it. Same rules as `submodule_repo` in
+// github.rs.
+const HOSTS = ['https://github.com/', 'https://www.github.com/', 'git@github.com:', 'ssh://git@github.com/', 'git://github.com/'];
+export function submoduleRepo(parent, address) {
+  if (typeof parent !== 'string' || typeof address !== 'string') return null;
+  const text = address.trim();
+  let parts;
+  if (text.startsWith('./') || text.startsWith('../')) {
+    parts = parent.split('/');
+    if (parts.length !== 2) return null;
+    for (const part of text.split('/')) {
+      if (part === '' || part === '.') continue;
+      if (part !== '..') parts.push(part);
+      else if (parts.pop() === undefined) return null;
+    }
+  } else {
+    const host = HOSTS.find((h) => text.toLowerCase().startsWith(h));
+    if (!host) return null;
+    parts = text.slice(host.length).split('/').filter(Boolean);
+  }
+  if (parts.length !== 2) return null;
+  const [owner, repo] = [parts[0], parts[1].replace(/\.git$/i, '')];
+  return OWNER.test(owner) && REPO.test(repo) && repo !== '.' && repo !== '..' ? `${owner}/${repo}` : null;
+}
+
+// The value of one line of a git config file: quotes and escapes taken out, a comment cut off.
+function configValue(raw) {
+  let out = '';
+  let quoted = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === '\\' && i + 1 < raw.length) {
+      const next = raw[++i];
+      out += next === 'n' ? '\n' : next === 't' ? '\t' : next;
+    } else if (ch === '"') quoted = !quoted;
+    else if (!quoted && (ch === '#' || ch === ';')) break;
+    else out += ch;
+  }
+  return out.trim();
+}
+
+// The text of a .gitmodules file -> Map of submodule path -> address. Anything that is not a
+// `path` or `url` line of a [submodule "..."] section is passed over.
+export function parseGitmodules(text) {
+  const found = new Map();
+  if (typeof text !== 'string') return found;
+  let entry = null;
+  const entries = new Map(); // by name: a section may be written in two parts
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('[')) {
+      const name = /^\[\s*submodule\s+"((?:[^"\\]|\\.)*)"\s*\]/i.exec(trimmed)?.[1];
+      entry = name === undefined ? null : entries.get(name) || {};
+      if (entry) entries.set(name, entry);
+      continue;
+    }
+    const pair = /^([A-Za-z][A-Za-z0-9-]*)\s*=(.*)$/.exec(trimmed);
+    if (!entry || !pair) continue;
+    const key = pair[1].toLowerCase();
+    if (key === 'path' || key === 'url') entry[key] = configValue(pair[2]);
+  }
+  for (const { path, url } of entries.values()) if (path && url) found.set(path, url);
+  return found;
+}

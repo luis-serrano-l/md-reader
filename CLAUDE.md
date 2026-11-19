@@ -47,6 +47,17 @@ file busy".
   checked by the same segment rule (`with_folder`; `isFolderPath` in the web version). Only
   folders exactly three levels below `repos/` are ever deleted (the short-lived `list-…` clone
   that `folders` reads file names from is one of them). The app only clones, fetches and resets: never a commit or a push.
+- **Submodules.** The address in `.gitmodules` is text from the repository: it is never
+  passed on. `submodule_repo` (`submoduleRepo` in `github-url.js`, same lists of good and bad
+  addresses in both tests) turns it into an owner and a name or refuses it, and the address
+  that `git` or `fetch` sees is built from those two. `git submodule` is never run. Desktop:
+  the commit is fetched into the clone and its files are written into the same working copy
+  (`update-index --force-remove`, `read-tree --prefix=<path>/ -u`), so the copy stays one
+  folder of plain files, with no repository inside it, and the path guard has no rule of its
+  own for submodules. Web: a source keeps `mounts` (`{ path, repo, ref }`, `ref` a full commit
+  id); only `locate`, called by `resolveInside`, turns a path into the repository it is read
+  from, and it checks each mount again. A submodule's path must pass the segment rule; there
+  is a limit on their number and depth in both back ends.
 - **The token is write-only.** Saved in `github-token` (mode 0600) next to the config file;
   no route or command returns it, no error message contains it, and it reaches `git` only
   through `GIT_CONFIG_*` environment variables of one command (never the URL, never
@@ -98,13 +109,15 @@ file busy".
   implementations where both can have them.
 - `public/web-backend.js`: the web back end. Sources and settings in `localStorage`, notes
   from `raw.githubusercontent.com` (or the API with a token), the list of notes from the git
-  trees API. It also registers `sw.js` and adds the manifest link, so the desktop app never
+  trees API (`readAll`: one request per repository, one more per submodule; "not found" leaves
+  a submodule out, any other failure fails the reading). It also registers `sw.js` and adds the manifest link, so the desktop app never
   has a service worker. `public/sw.js`: keeps the app and opened notes for offline use and
   answers `gh-asset?...` (images of private repositories, as images only). A file added to
   `public/` must be added to `FILES` in `sw.js`. All URLs in the page are relative, so the site works below a sub-path.
 - `.github/workflows/pages.yml`: publishes `public/` to GitHub Pages on a push to `main`.
   The repository is public: never commit a token, a personal address or a private path.
-- `public/github-url.js`: `parseGithubUrl`, pure, used by `web-backend.js`. `github.rs` has
+- `public/github-url.js`: `parseGithubUrl`, `submoduleRepo` and `parseGitmodules` (the desktop
+  app lets `git config --blob` read that file), pure, used by `web-backend.js`. `github.rs` has
   the same rules; the tests in `test/github.test.js` and in
   `github.rs` use the same lists of good and bad addresses.
 - `src-tauri/src/lib.rs`: the desktop back end. Commands `list_roots`,
@@ -115,6 +128,11 @@ file busy".
 - `src-tauri/src/roots.rs`: the list of sources (load/save of the config file), the path
   guard, the file tree. `src-tauri/src/github.rs`: `download`, `update`, `discard`, the token
   file, and running `git` (timeout, own process group, token through the environment).
+  `Submodules::walk` reads the submodules of a clone: with `checkout` it writes their files
+  into the copy (after a clone and after every reset, which takes them out again), without
+  it only the file names are collected for `folders`. `update` compares the notes in the
+  index before and after (`notes`, `changes`), which covers submodules too. The tests build
+  repositories on disk that stand in for GitHub (`Hub`), so they need `git` but no network.
 - `public/study.css`: the look of the note. A port of the stylesheet behind the study PDFs
   (`~/notes/middle-term-exam-prep/readme-study.css`). Every font and colour is a
   CSS custom property on `.sheet`; add new ones there instead of hard-coding values, because the

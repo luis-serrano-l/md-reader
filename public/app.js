@@ -968,13 +968,19 @@ desk.addEventListener('click', (event) => {
 
 const names = (list) => (list.length > 8 ? `${list.slice(0, 8).join(', ')} and ${list.length - 8} more` : list.join(', '));
 
+// The submodules that a source was read without, as a sentence ('' when there are none).
+const notRead = (paths) =>
+  paths?.length
+    ? `${paths.length === 1 ? 'A submodule was' : 'Submodules were'} not read: ${names(paths)}. Only submodules that are on GitHub are read, and a private one needs a saved token that may read it.`
+    : '';
+
 // Brings the downloaded copy up to date and says which notes changed.
 async function updateRoot(root, button) {
   button.disabled = true;
   const row = button.closest('.root');
   row?.classList.add('busy'); // its buttons stay in view while it runs
   try {
-    const { added, changed, removed } = await backend.updateGithub(root.id);
+    const { added, changed, removed, skipped } = await backend.updateGithub(root.id);
     const parts = [
       added.length && `New: ${names(added)}.`,
       changed.length && `Changed: ${names(changed)}.`,
@@ -988,7 +994,8 @@ async function updateRoot(root, button) {
       if (open && removed.includes(open)) await openDoc(root.id, open).catch(() => {});
       else if (open && changed.includes(open) && backend.kind === 'web') await openDoc(root.id, open, { keepScroll: true }).catch(() => {});
     }
-    await ask(parts.length ? `${root.name} was updated` : `${root.name} is up to date`, parts.join(' ') || 'No note changed on GitHub.');
+    const text = [parts.join(' ') || 'No note changed on GitHub.', notRead(skipped)].filter(Boolean).join(' ');
+    await ask(parts.length ? `${root.name} was updated` : `${root.name} is up to date`, text);
   } catch (err) {
     await ask(`${root.name} could not be updated`, err.message);
   } finally {
@@ -1123,7 +1130,8 @@ function showFolders(listing) {
     (have
       ? `${listing.repo}, branch ${listing.ref}. The ticked folders are in your list. Tick another to add it, untick one to remove it.`
       : `${listing.repo} · ${listing.ref}. Tick what to add; each ticked folder becomes its own source, with its sub-folders.`) +
-    (listing.truncated ? ' The repository is large: not every folder is listed, and the counts may be too low.' : '');
+    (listing.truncated ? ' The repository is large: not every folder is listed, and the counts may be too low.' : '') +
+    (listing.skipped?.length ? ` ${notRead(listing.skipped)}` : '');
   const listed = [{ path: '', count: listing.total }, ...listing.folders];
   // A folder in the list that GitHub no longer shows can still be removed here.
   const gone = have ? [...have.keys()].filter((path) => !listed.some((row) => row.path === path)) : [];
@@ -1251,6 +1259,8 @@ async function addGithub() {
   await loadRoots();
   if (!githubDialog.open && added.length === 1 && added[0].kind === 'file') await openDoc(added[0].id, added[0].name, { push: true }).catch(() => {});
   else if (!state.current) showWelcome();
+  const left = [...new Set(added.flatMap((root) => root.skipped || []))];
+  if (left.length) await ask(added.length === 1 ? `${added[0].name} was added` : `${added.length} folders were added`, notRead(left));
 }
 
 $('mdr-github-form').addEventListener('submit', (event) => {

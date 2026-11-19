@@ -5,6 +5,11 @@
 //!   committed to or pushed.
 //! - Only what is asked for is downloaded: a shallow, sparse clone without blobs
 //!   (`git clone --depth 1 --filter=blob:none --sparse` plus `git sparse-checkout set`).
+//! - Submodules inside a downloaded folder are read too (`Submodules`): the commit the
+//!   repository names is fetched and its files are put into the same copy, so the path guard
+//!   needs no other rule for them. Their addresses come from `.gitmodules`, which is text from
+//!   the repository: each is checked by `submodule_repo` and `git` only ever sees an address
+//!   built here from the owner and name that passed.
 //! - A token for private repositories is kept in its own file (mode 0600) next to the config
 //!   file. It is handed to `git` through the environment for one command at a time; it is
 //!   never written into the clone, its URL or its `.git/config`, and never sent to the page.
@@ -153,6 +158,52 @@ pub fn with_folder(mut spec: Spec, sub: &str) -> Result<Spec, GuardError> {
 
 fn is_folder_path(sub: &str) -> bool {
     sub.len() <= 1000 && sub.split('/').all(is_segment)
+}
+
+fn is_sha(text: &str) -> bool {
+    matches!(text.len(), 40 | 64) && text.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'))
+}
+
+fn is_hidden(segment: &str) -> bool {
+    segment.starts_with('.') || segment == "node_modules"
+}
+
+/// The repository that the address of a submodule names, as (owner, name), or None when it is
+/// not one on GitHub. `parent` is the `owner/name` of the repository whose `.gitmodules` holds
+/// the address: one like `../other.git` is relative to it. The web version has the same rules
+/// (`submoduleRepo` in `public/github-url.js`).
+pub fn submodule_repo(parent: &str, address: &str) -> Option<(String, String)> {
+    const HOSTS: [&str; 5] = ["https://github.com/", "https://www.github.com/", "git@github.com:", "ssh://git@github.com/", "git://github.com/"];
+    let address = address.trim();
+    let mut parts: Vec<&str> = Vec::new();
+    if address.starts_with("./") || address.starts_with("../") {
+        parts.extend(parent.split('/'));
+        if parts.len() != 2 {
+            return None;
+        }
+        for part in address.split('/') {
+            match part {
+                "" | "." => {}
+                ".." => {
+                    parts.pop()?;
+                }
+                name => parts.push(name),
+            }
+        }
+    } else {
+        let lower = address.to_ascii_lowercase();
+        let host = HOSTS.iter().find(|host| lower.starts_with(*host))?;
+        parts.extend(address[host.len()..].split('/').filter(|p| !p.is_empty()));
+    }
+    let [owner, repo] = parts[..] else { return None };
+    let repo = if repo.to_ascii_lowercase().ends_with(".git") { &repo[..repo.len() - 4] } else { repo };
+    (is_owner(owner) && is_repo(repo)).then(|| (owner.to_string(), repo.to_string()))
+}
+
+/// True when a submodule at `path` belongs to a source that is the folder `scope` ("" is the
+/// whole repository): it is that folder, lies inside it, or holds it.
+fn in_scope(path: &str, scope: &str) -> bool {
+    scope.is_empty() || path == scope || path.starts_with(&format!("{scope}/")) || scope.starts_with(&format!("{path}/"))
 }
 
 // ---------- Where things are kept ----------
@@ -383,6 +434,8 @@ pub struct Download {
     pub target: PathBuf,
     /// What the config file keeps about it.
     pub github: Github,
+    /// Submodules inside it that could not be read.
+    pub skipped: Vec<String>,
 }
 
 /// Downloads what `spec` names.
@@ -392,9 +445,11 @@ pub fn download(spec: &Spec, config_file: &Path) -> Result<Download, GuardError>
     let dir = clone_dir(spec);
     let target = spec.sub.split('/').filter(|p| !p.is_empty()).fold(dir.clone(), |path, part| path.join(part));
     let found = || if spec.kind == SourceKind::File { target.is_file() } else { target.is_dir() };
-    let made = |git_ref: String| Download {
+    let repo = format!("{}/{}", spec.owner, spec.repo);
+    let made = |git_ref: String, skipped: Vec<String>| Download {
         target: target.clone(),
-        github: Github { repo: format!("{}/{}", spec.owner, spec.repo), git_ref, sub: spec.sub.clone(), dir: dir.to_string_lossy().into_owned() },
+        github: Github { repo: repo.clone(), git_ref, sub: spec.sub.clone(), dir: dir.to_string_lossy().into_owned() },
+        skipped,
     };
     // Already downloaded (the same address was added before): that copy is used as it is, never
     // deleted and fetched again. "Update" is what brings it up to date.
@@ -404,7 +459,7 @@ pub fn download(spec: &Spec, config_file: &Path) -> Result<Download, GuardError>
         } else {
             spec.git_ref.clone()
         };
-        return Ok(made(git_ref));
+        return Ok(made(git_ref, Vec::new()));
     }
     remove_dir(&dir); // what an interrupted download left
     if dir.parent().map(fs::create_dir_all).and_then(Result::ok).is_none() {
@@ -427,6 +482,7 @@ pub fn download(spec: &Spec, config_file: &Path) -> Result<Download, GuardError>
         if !folder.is_empty() {
             git(&["sparse-checkout", "set", "--cone", "--", &folder], Some(&dir), token)?;
         }
+        let skipped = if spec.kind == SourceKind::Folder { submodules(&dir, &repo, &spec.sub, token)? } else { Vec::new() };
         let git_ref = if spec.git_ref.is_empty() {
             git(&["rev-parse", "--abbrev-ref", "HEAD"], Some(&dir), None)?.trim().to_string()
         } else {
@@ -438,13 +494,157 @@ pub fn download(spec: &Spec, config_file: &Path) -> Result<Download, GuardError>
                 if spec.kind == SourceKind::File { "That file was not found in the repository." } else { "That folder was not found in the repository." },
             );
         }
-        Ok(made(git_ref))
+        Ok(made(git_ref, skipped))
     };
     let result = run();
     if result.is_err() {
         remove_dir(&dir);
     }
     result
+}
+
+// ---------- Submodules ----------
+
+const MAX_SUBMODULES: usize = 30;
+const MAX_SUBMODULE_DEPTH: usize = 5;
+
+/// Reads the submodules of a clone, those of submodules included. With `checkout` their files
+/// are put into the working copy, each where its repository has it, and the clone is then one
+/// folder of plain files (nothing in it is a repository of its own). Without, only the names of
+/// all files are collected, for the list of folders.
+///
+/// What comes from the repository is never trusted: a path must pass the segment rule, an
+/// address must name a GitHub repository (`submodule_repo`), and there is a limit on how many
+/// are read and how deep. One that fails any of these, or cannot be fetched, is left out and
+/// named in `skipped`.
+struct Submodules<'a> {
+    dir: &'a Path,
+    token: Option<&'a str>,
+    /// The folder of the source; submodules outside it are left alone.
+    scope: &'a str,
+    checkout: bool,
+    taken: usize,
+    files: Vec<String>,
+    skipped: Vec<String>,
+}
+
+impl Submodules<'_> {
+    /// `rev` is a commit of `repo` (`owner/name`) whose files are at `prefix` in the clone.
+    fn walk(&mut self, prefix: &str, rev: &str, repo: &str, depth: usize) -> Result<(), GuardError> {
+        let listing = git(&["ls-tree", "-r", "-z", rev], Some(self.dir), self.token)?;
+        let mut links = Vec::new();
+        for record in listing.split('\0') {
+            // "<mode> <type> <id>\t<path>"; mode 160000 is a submodule.
+            let Some((meta, name)) = record.split_once('\t') else { continue };
+            let mut meta = meta.split(' ');
+            let (mode, id) = (meta.next().unwrap_or(""), meta.nth(1).unwrap_or(""));
+            if mode == "160000" {
+                links.push((name.to_string(), id.to_string()));
+            } else if !self.checkout {
+                self.files.push(format!("{prefix}{name}"));
+            }
+        }
+        links.retain(|(name, _)| {
+            let path = format!("{prefix}{name}");
+            !path.split('/').any(is_hidden) && in_scope(&path, self.scope)
+        });
+        if links.is_empty() {
+            return Ok(());
+        }
+        let addresses = self.addresses(rev);
+        for (name, id) in links {
+            let path = format!("{prefix}{name}");
+            let source = addresses.iter().find(|(at, _)| *at == name).and_then(|(_, address)| submodule_repo(repo, address));
+            let allowed = is_folder_path(&path) && is_sha(&id) && depth < MAX_SUBMODULE_DEPTH && self.taken < MAX_SUBMODULES;
+            let Some((owner, name)) = source.filter(|_| allowed) else {
+                self.skipped.push(path);
+                continue;
+            };
+            self.taken += 1;
+            if self.fetch(&owner, &name, &id).and_then(|()| self.place(&path, &id)).is_err() {
+                self.skipped.push(path);
+                continue;
+            }
+            // Its own submodules; one that cannot be listed leaves the rest as it is.
+            let _ = self.walk(&format!("{path}/"), &id, &format!("{owner}/{name}"), depth + 1);
+        }
+        Ok(())
+    }
+
+    /// (path, address) of every entry of `.gitmodules` as it is in commit `rev`.
+    fn addresses(&self, rev: &str) -> Vec<(String, String)> {
+        let Ok(text) = git(&["config", "--blob", &format!("{rev}:.gitmodules"), "--list", "-z"], Some(self.dir), self.token) else {
+            return Vec::new();
+        };
+        // "submodule.<name>.path\n<value>" and "submodule.<name>.url\n<value>", in any order.
+        let mut entries: Vec<(&str, Option<&str>, Option<&str>)> = Vec::new();
+        for record in text.split('\0') {
+            let Some((key, value)) = record.split_once('\n') else { continue };
+            let Some((name, field)) = key.strip_prefix("submodule.").and_then(|rest| rest.rsplit_once('.')) else { continue };
+            let at = entries.iter().position(|entry| entry.0 == name).unwrap_or_else(|| {
+                entries.push((name, None, None));
+                entries.len() - 1
+            });
+            match field {
+                "path" => entries[at].1 = Some(value),
+                "url" => entries[at].2 = Some(value),
+                _ => {}
+            }
+        }
+        entries.into_iter().filter_map(|(_, path, address)| Some((path?.to_string(), address?.to_string()))).collect()
+    }
+
+    /// Brings commit `id` of a repository into the clone, unless it is there.
+    fn fetch(&self, owner: &str, repo: &str, id: &str) -> Result<(), GuardError> {
+        if git(&["cat-file", "-e", &format!("{id}^{{tree}}")], Some(self.dir), None).is_ok() {
+            return Ok(());
+        }
+        let url = format!("https://github.com/{owner}/{repo}.git");
+        // With its files when they are to be written out; the list of folders needs none.
+        let filter = if self.checkout { "--no-filter" } else { "--filter=blob:none" };
+        git(&["fetch", "--quiet", "--depth", "1", "--no-tags", filter, "--", &url, id], Some(self.dir), self.token).map(|_| ())
+    }
+
+    /// Puts the files of commit `id` where the submodule is. Only the index and the working
+    /// copy change: nothing is committed.
+    fn place(&self, path: &str, id: &str) -> Result<(), GuardError> {
+        if !self.checkout {
+            return Ok(());
+        }
+        git(&["update-index", "--force-remove", "--", path], Some(self.dir), None)?;
+        git(&["read-tree", &format!("--prefix={path}/"), "-u", id], Some(self.dir), self.token).map(|_| ())
+    }
+}
+
+/// Puts the files of the submodules inside the folder `scope` into the clone `dir`, which is in
+/// the state `git` left it in (just cloned, or just reset). Returns the ones left out.
+fn submodules(dir: &Path, repo: &str, scope: &str, token: Option<&str>) -> Result<Vec<String>, GuardError> {
+    let mut all = Submodules { dir, token, scope, checkout: true, taken: 0, files: Vec::new(), skipped: Vec::new() };
+    all.walk("", "HEAD", repo, 0)?;
+    Ok(all.skipped)
+}
+
+/// True when the clone still has a submodule inside `scope` whose files are not in it.
+fn has_unread_submodules(dir: &Path, scope: &str) -> bool {
+    let Ok(index) = git(&["ls-files", "-s", "-z"], Some(dir), None) else { return false };
+    index.split('\0').any(|record| {
+        record.split_once('\t').is_some_and(|(meta, path)| meta.starts_with("160000 ") && !path.split('/').any(is_hidden) && in_scope(path, scope))
+    })
+}
+
+/// The notes of a clone inside `scope`, each with the id of its text, submodules included.
+fn notes(dir: &Path, scope: &str) -> Result<Vec<(String, String)>, GuardError> {
+    let scope = if scope.is_empty() { "." } else { scope };
+    let index = git(&["ls-files", "-s", "-z", "--", scope], Some(dir), None)?;
+    let mut notes = Vec::new();
+    for record in index.split('\0') {
+        // "<mode> <id> <stage>\t<path>"
+        let Some((meta, path)) = record.split_once('\t') else { continue };
+        if is_md(path) && !meta.starts_with("160000 ") {
+            notes.push((path.to_string(), meta.split(' ').nth(1).unwrap_or("").to_string()));
+        }
+    }
+    Ok(notes)
 }
 
 /// One folder of a repository and how many notes are in it, sub-folders included.
@@ -465,6 +665,8 @@ pub struct Listing {
     pub total: usize,
     pub folders: Vec<FolderCount>,
     pub truncated: bool,
+    /// Submodules that could not be read: their notes are not counted.
+    pub skipped: Vec<String>,
 }
 
 const MAX_FOLDERS: usize = 1000;
@@ -533,7 +735,7 @@ fn natural_order(a: &str, b: &str) -> std::cmp::Ordering {
 pub fn folders(spec: &Spec, config_file: &Path) -> Result<Listing, GuardError> {
     let repo = format!("{}/{}", spec.owner, spec.repo);
     if spec.kind == SourceKind::File || !spec.sub.is_empty() {
-        return Ok(Listing { direct: true, repo, git_ref: spec.git_ref.clone(), total: 0, folders: Vec::new(), truncated: false });
+        return Ok(Listing { direct: true, repo, git_ref: spec.git_ref.clone(), total: 0, folders: Vec::new(), truncated: false, skipped: Vec::new() });
     }
     let token = read_token(config_file);
     let token = token.as_deref();
@@ -558,14 +760,15 @@ pub fn folders(spec: &Spec, config_file: &Path) -> Result<Listing, GuardError> {
         }
         args.extend(["--", &url, &dir_text]);
         git(&args, None, token)?;
-        let names = git(&["ls-tree", "-r", "--name-only", "-z", "HEAD"], Some(&dir), token)?;
+        let mut all = Submodules { dir: &dir, token, scope: "", checkout: false, taken: 0, files: Vec::new(), skipped: Vec::new() };
+        all.walk("", "HEAD", &repo, 0)?;
         let git_ref = if spec.git_ref.is_empty() {
             git(&["rev-parse", "--abbrev-ref", "HEAD"], Some(&dir), None)?.trim().to_string()
         } else {
             spec.git_ref.clone()
         };
-        let (total, folders, truncated) = folder_counts(names.split('\0').filter(|n| !n.is_empty()));
-        Ok(Listing { direct: false, repo: repo.clone(), git_ref, total, folders, truncated })
+        let (total, folders, truncated) = folder_counts(all.files.iter().map(String::as_str));
+        Ok(Listing { direct: false, repo: repo.clone(), git_ref, total, folders, truncated, skipped: all.skipped })
     };
     let result = run();
     remove_dir(&dir);
@@ -578,6 +781,25 @@ pub struct Changes {
     pub added: Vec<String>,
     pub changed: Vec<String>,
     pub removed: Vec<String>,
+    /// Submodules inside the source that could not be read.
+    pub skipped: Vec<String>,
+}
+
+/// What differs between two lists of notes (`notes`). `folder` is where the source's own paths
+/// start: it is cut off.
+fn changes(before: &[(String, String)], after: &[(String, String)], folder: &str) -> Changes {
+    let rel = |path: &str| path.strip_prefix(&format!("{folder}/")).filter(|_| !folder.is_empty()).unwrap_or(path).to_string();
+    let find = |list: &[(String, String)], path: &str| list.iter().find(|(p, _)| p == path).map(|(_, id)| id.clone());
+    let mut result = Changes::default();
+    for (path, id) in after {
+        match find(before, path) {
+            None => result.added.push(rel(path)),
+            Some(old) if old != *id => result.changed.push(rel(path)),
+            Some(_) => {}
+        }
+    }
+    result.removed = before.iter().filter(|(path, _)| find(after, path).is_none()).map(|(path, _)| rel(path)).collect();
+    result
 }
 
 /// Brings a downloaded source up to date.
@@ -590,33 +812,26 @@ pub fn update(root: &Root, config_file: &Path) -> Result<Changes, GuardError> {
         return fail(Kind::NotFound, "The downloaded copy is missing. Remove this source and add it again.");
     }
     let token = read_token(config_file);
-    let token = token.as_deref();
+    update_copy(dir, g, root.kind, token.as_deref())
+}
+
+fn update_copy(dir: &Path, g: &Github, kind: SourceKind, token: Option<&str>) -> Result<Changes, GuardError> {
+    let old = notes(dir, &g.sub)?;
     let before = git(&["rev-parse", "HEAD"], Some(dir), None)?.trim().to_string();
     git(&["fetch", "--quiet", "--depth", "1", "--no-tags", "origin", &g.git_ref], Some(dir), token)?;
     let after = git(&["rev-parse", "FETCH_HEAD"], Some(dir), None)?.trim().to_string();
-    let mut changes = Changes::default();
-    if before == after {
-        return Ok(changes);
+    let folder = kind == SourceKind::Folder;
+    // Nothing new on GitHub. A submodule that was left out before is tried again.
+    if before == after && !(folder && has_unread_submodules(dir, &g.sub)) {
+        return Ok(Changes::default());
     }
-    let prefix = sparse_folder(root.kind, &g.sub);
-    let scope = if g.sub.is_empty() { "." } else { g.sub.as_str() };
-    let diff = git(&["diff", "--name-status", "--no-renames", "-z", &before, &after, "--", scope], Some(dir), token)?;
-    // The copy only ever follows the repository: local changes to it are not kept.
+    // The copy only ever follows the repository: local changes to it are not kept. The reset
+    // also takes the files of submodules out again; they are put back as the new commit has them.
     git(&["reset", "--quiet", "--hard", &after], Some(dir), token)?;
-    let fields: Vec<&str> = diff.split('\0').collect();
-    for pair in fields.chunks(2) {
-        let [status, file] = pair else { continue };
-        if !is_md(file) {
-            continue;
-        }
-        let rel = file.strip_prefix(&format!("{prefix}/")).filter(|_| !prefix.is_empty()).unwrap_or(file).to_string();
-        match *status {
-            "A" => changes.added.push(rel),
-            "D" => changes.removed.push(rel),
-            _ => changes.changed.push(rel),
-        }
-    }
-    Ok(changes)
+    let skipped = if folder { submodules(dir, &g.repo, &g.sub, token)? } else { Vec::new() };
+    let mut result = changes(&old, &notes(dir, &g.sub)?, &sparse_folder(kind, &g.sub));
+    result.skipped = skipped;
+    Ok(result)
 }
 
 /// Deletes the downloaded copy of a removed source.
@@ -753,6 +968,243 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn a_submodule_address_must_name_a_github_repository() {
+        let lib = Some(("octo".to_string(), "lib".to_string()));
+        for address in [
+            "https://github.com/octo/lib",
+            "https://github.com/octo/lib.git",
+            "https://GitHub.com/octo/lib.git/",
+            "https://www.github.com/octo/lib",
+            "git@github.com:octo/lib.git",
+            "ssh://git@github.com/octo/lib.git",
+            "git://github.com/octo/lib",
+            "../lib",
+            "../lib.git",
+            "../../octo/lib.git",
+            "  ../lib\n",
+        ] {
+            assert_eq!(submodule_repo("octo/notes", address), lib, "{address}");
+        }
+        assert_eq!(submodule_repo("octo/notes", "../../other/lib"), Some(("other".to_string(), "lib".to_string())));
+        for address in [
+            "",
+            "octo/lib",
+            "lib",
+            "./lib",
+            "../",
+            "../..",
+            "../../lib",
+            "../../../octo/lib",
+            "../lib/more",
+            "/srv/git/lib.git",
+            "file:///srv/git/lib.git",
+            "https://gitlab.com/octo/lib.git",
+            "http://github.com/octo/lib",
+            "https://github.com.evil.test/octo/lib",
+            "https://user:pw@github.com/octo/lib",
+            "https://github.com/octo",
+            "https://github.com/octo/lib/tree/main",
+            "https://github.com/octo/lib?x=1",
+            "https://github.com/-octo/lib",
+            "https://github.com/octo/..",
+            "../-lib/../lib x",
+            "--upload-pack=touch /tmp/x",
+            "ext::sh -c touch% /tmp/x",
+        ] {
+            assert_eq!(submodule_repo("octo/notes", address), None, "{address}");
+        }
+        assert_eq!(submodule_repo("not a repository", "../lib"), None);
+    }
+
+    #[test]
+    fn a_submodule_is_read_when_it_touches_the_folder_of_the_source() {
+        for (path, scope) in [("lib", ""), ("docs/lib", "docs"), ("docs", "docs"), ("docs", "docs/deep")] {
+            assert!(in_scope(path, scope), "{path} in {scope}");
+        }
+        for (path, scope) in [("other", "docs"), ("docs2", "docs"), ("doc", "docs"), ("docs/a", "docs/b")] {
+            assert!(!in_scope(path, scope), "{path} in {scope}");
+        }
+    }
+
+    #[test]
+    fn an_update_names_the_notes_that_are_new_changed_or_gone() {
+        let list = |notes: &[(&str, &str)]| notes.iter().map(|(p, id)| (p.to_string(), id.to_string())).collect::<Vec<_>>();
+        let before = list(&[("docs/a.md", "1"), ("docs/b.md", "2"), ("docs/lib/old.md", "3")]);
+        let after = list(&[("docs/a.md", "1"), ("docs/b.md", "9"), ("docs/lib/new.md", "4")]);
+        let got = changes(&before, &after, "docs");
+        assert_eq!((got.added, got.changed, got.removed), (vec!["lib/new.md".to_string()], vec!["b.md".to_string()], vec!["lib/old.md".to_string()]));
+        assert_eq!(changes(&before, &before, "").added.len() + changes(&before, &before, "").removed.len(), 0);
+        assert_eq!(changes(&[], &before, "").added, ["docs/a.md", "docs/b.md", "docs/lib/old.md"]);
+    }
+
+    /// Runs `git` for a test and returns what it printed.
+    fn sh(dir: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "protocol.file.allow=always", "-c", "commit.gpgsign=false"])
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .output()
+            .expect("git runs");
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// Repositories on disk that stand in for GitHub: `octo/notes` with two submodules on
+    /// `octo/lib` (one in `docs`, one outside it) and one that is not on GitHub; `octo/lib` with
+    /// a submodule of its own, `octo/inner`, given by a relative address.
+    struct Hub {
+        base: PathBuf,
+    }
+
+    impl Drop for Hub {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.base);
+        }
+    }
+
+    impl Hub {
+        fn new(name: &str) -> Hub {
+            let base = std::env::temp_dir().join(format!("mdr-hub-{}-{name}", std::process::id()));
+            let _ = fs::remove_dir_all(&base);
+            let hub = Hub { base };
+            hub.make("inner", &[("deep.md", "# deep")]);
+            hub.make("lib", &[("README.md", "# lib"), ("docs/guide.md", "# guide"), ("img/p.svg", "<svg/>"), ("code.rs", "x"),
+                (".gitmodules", "[submodule \"in\"]\n\tpath = nested\n\turl = ../inner.git\n")]);
+            hub.link("lib", "nested", "inner");
+            hub.make("notes", &[("README.md", "# top"), ("docs/a.md", "# a"), (".gitmodules", concat!(
+                "[submodule \"lib\"]\n\tpath = docs/lib\n\turl = https://github.com/octo/lib.git\n",
+                "[submodule \"away\"]\n\tpath = docs/away\n\turl = https://gitlab.com/octo/lib.git\n",
+                "[submodule \"other\"]\n\tpath = other\n\turl = git@github.com:octo/lib.git\n",
+            ))]);
+            for path in ["docs/lib", "docs/away", "other"] {
+                hub.link("notes", path, "lib");
+            }
+            hub
+        }
+
+        fn repo(&self, name: &str) -> PathBuf {
+            self.base.join("remotes").join("octo").join(format!("{name}.git"))
+        }
+
+        fn write(&self, name: &str, files: &[(&str, &str)]) {
+            for (file, text) in files {
+                let path = self.repo(name).join(file);
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
+                fs::write(path, text).unwrap();
+                sh(&self.repo(name), &["add", "--", file]);
+            }
+            sh(&self.repo(name), &["commit", "-q", "-m", "files"]);
+        }
+
+        fn make(&self, name: &str, files: &[(&str, &str)]) {
+            fs::create_dir_all(self.repo(name)).unwrap();
+            sh(&self.repo(name), &["init", "-q", "-b", "main"]);
+            for key in ["uploadpack.allowFilter", "uploadpack.allowAnySHA1InWant"] {
+                sh(&self.repo(name), &["config", key, "true"]);
+            }
+            self.write(name, files);
+        }
+
+        /// Makes `path` of `name` a submodule at the newest commit of `of`.
+        fn link(&self, name: &str, path: &str, of: &str) {
+            let id = sh(&self.repo(of), &["rev-parse", "HEAD"]);
+            sh(&self.repo(name), &["update-index", "--add", "--cacheinfo", &format!("160000,{id},{path}")]);
+            sh(&self.repo(name), &["commit", "-q", "-m", "submodule"]);
+        }
+
+        /// A clone of `octo/notes` as `download` makes it, in which github.com is this hub.
+        fn clone(&self, to: &str, how: &[&str], folder: &str) -> PathBuf {
+            let dir = self.base.join(to);
+            let url = format!("file://{}", self.repo("notes").display());
+            let mut args = vec!["clone", "--quiet", "--depth", "1", "--single-branch", "--no-tags", "--filter=blob:none"];
+            args.extend(how);
+            args.extend(["--", &url, to]);
+            sh(&self.base, &args);
+            sh(&dir, &["config", &format!("url.file://{}/remotes/.insteadOf", self.base.display()), "https://github.com/"]);
+            if !folder.is_empty() {
+                sh(&dir, &["sparse-checkout", "set", "--cone", "--", folder]);
+            }
+            dir
+        }
+    }
+
+    #[test]
+    fn submodules_inside_the_folder_are_downloaded_and_follow_updates() {
+        let hub = Hub::new("update");
+        let dir = hub.clone("copy", &["--sparse"], "docs");
+        assert_eq!(submodules(&dir, "octo/notes", "docs", None).unwrap(), ["docs/away"]);
+        for file in ["docs/a.md", "docs/lib/README.md", "docs/lib/docs/guide.md", "docs/lib/img/p.svg", "docs/lib/nested/deep.md"] {
+            assert!(dir.join(file).is_file(), "{file}");
+        }
+        // Plain files only: nothing in the copy is a repository of its own, and what lies
+        // outside the folder that was added is not fetched.
+        assert!(!dir.join("docs/lib/.git").exists() && !dir.join("docs/lib/nested/.git").exists());
+        assert!(!dir.join("other/README.md").exists());
+        assert!(!dir.join("docs/away/README.md").exists());
+        let config = fs::read_to_string(dir.join(".git").join("config")).unwrap();
+        assert!(!config.contains("submodule") && !config.contains("octo/lib"), "{config}");
+
+        // GitHub moves on: the submodule gets a note and loses one, the repository changes one.
+        hub.write("lib", &[("docs/new.md", "# new")]);
+        sh(&hub.repo("lib"), &["rm", "-q", "docs/guide.md"]);
+        hub.write("lib", &[]);
+        hub.link("notes", "docs/lib", "lib");
+        hub.write("notes", &[("docs/a.md", "# a, again")]);
+        let g = Github { repo: "octo/notes".into(), git_ref: "main".into(), sub: "docs".into(), dir: dir.to_string_lossy().into_owned() };
+        let got = update_copy(&dir, &g, SourceKind::Folder, None).unwrap();
+        assert_eq!(got.added, ["lib/docs/new.md"]);
+        assert_eq!(got.changed, ["a.md"]);
+        assert_eq!(got.removed, ["lib/docs/guide.md"]);
+        assert_eq!(got.skipped, ["docs/away"]);
+        assert!(dir.join("docs/lib/docs/new.md").is_file() && !dir.join("docs/lib/docs/guide.md").exists());
+        assert!(dir.join("docs/lib/nested/deep.md").is_file());
+
+        // Nothing new: no note is named, and the one left out is tried again.
+        let got = update_copy(&dir, &g, SourceKind::Folder, None).unwrap();
+        assert!(got.added.is_empty() && got.changed.is_empty() && got.removed.is_empty());
+        assert_eq!(got.skipped, ["docs/away"]);
+        assert!(dir.join("docs/lib/README.md").is_file());
+
+        // The submodules are taken out of the repository: their notes go.
+        sh(&hub.repo("notes"), &["rm", "-q", "--cached", "docs/lib", "docs/away"]);
+        hub.write("notes", &[]);
+        let got = update_copy(&dir, &g, SourceKind::Folder, None).unwrap();
+        assert_eq!(got.removed, ["lib/README.md", "lib/docs/new.md", "lib/nested/deep.md"]);
+        assert!(got.skipped.is_empty());
+        assert!(!dir.join("docs/lib/README.md").exists() && dir.join("docs/a.md").is_file());
+        let got = update_copy(&dir, &g, SourceKind::Folder, None).unwrap();
+        assert!(got.added.is_empty() && got.removed.is_empty() && got.skipped.is_empty());
+    }
+
+    #[test]
+    fn a_folder_inside_a_submodule_can_be_the_source() {
+        let hub = Hub::new("inside");
+        let dir = hub.clone("copy", &["--sparse"], "docs/lib/docs");
+        assert!(submodules(&dir, "octo/notes", "docs/lib/docs", None).unwrap().is_empty());
+        assert!(dir.join("docs/lib/docs/guide.md").is_file());
+        assert!(!dir.join("docs/lib/img/p.svg").exists(), "only the folder that was asked for is written out");
+        assert!(!dir.join("docs/lib/nested/deep.md").exists());
+        let found: Vec<String> = notes(&dir, "docs/lib/docs").unwrap().into_iter().map(|(path, _)| path).collect();
+        assert_eq!(found, ["docs/lib/docs/guide.md"]);
+    }
+
+    #[test]
+    fn the_list_of_folders_counts_the_notes_of_submodules() {
+        let hub = Hub::new("list");
+        let dir = hub.clone("list", &["--no-checkout"], "");
+        let mut all = Submodules { dir: &dir, token: None, scope: "", checkout: false, taken: 0, files: Vec::new(), skipped: Vec::new() };
+        all.walk("", "HEAD", "octo/notes", 0).unwrap();
+        assert_eq!(all.skipped, ["docs/away"]);
+        let (total, folders, _) = folder_counts(all.files.iter().map(String::as_str));
+        assert_eq!(total, 8);
+        let got: Vec<(&str, usize)> = folders.iter().map(|f| (f.path.as_str(), f.count)).collect();
+        assert_eq!(got, [("docs", 4), ("docs/lib", 3), ("docs/lib/docs", 1), ("docs/lib/nested", 1), ("other", 3), ("other/docs", 1), ("other/nested", 1)]);
+        assert!(fs::read_dir(&dir).unwrap().flatten().all(|e| e.file_name() == ".git"), "nothing is written out for a list");
+    }
+
     /// Needs the network and `git`: `XDG_DATA_HOME=<scratch> cargo test -- --ignored`.
     #[test]
     #[ignore]
@@ -789,5 +1241,20 @@ mod tests {
 
         let missing = parse_github_url("https://github.com/markdown-it/markdown-it/tree/master/nofolder").unwrap();
         assert_eq!(download(&missing, &config).err().unwrap().kind, Kind::NotFound);
+
+        // A repository with a submodule (lib/tmux-test): its notes are counted and downloaded.
+        let tpm = parse_github_url("tmux-plugins/tpm").unwrap();
+        let listing = folders(&tpm, &config).unwrap();
+        assert!(listing.skipped.is_empty(), "{:?}", listing.skipped);
+        assert!(listing.folders.iter().any(|f| f.path == "lib/tmux-test" && f.count >= 1), "{:?}", listing.folders);
+        let got = download(&with_folder(tpm, "lib").unwrap(), &config).unwrap();
+        assert!(got.skipped.is_empty(), "{:?}", got.skipped);
+        assert!(got.target.join("tmux-test").join("README.md").is_file());
+        assert!(!got.target.join("tmux-test").join(".git").exists());
+        let root = Root { id: "x".into(), path: got.target.clone(), kind: SourceKind::Folder, github: Some(got.github.clone()) };
+        let changes = update(&root, &config).unwrap();
+        assert!(changes.added.is_empty() && changes.removed.is_empty() && changes.skipped.is_empty());
+        assert!(got.target.join("tmux-test").join("README.md").is_file());
+        discard(&root);
     }
 }

@@ -5,12 +5,14 @@
 //   listRoots()                -> [{ id, path, name, kind: 'folder' | 'file', github, missing }]
 //   addRoot(path)              -> root (a folder)
 //   addFile(path)              -> root (one .md file)
-//   githubFolders(url)         -> { direct, repo, ref, total, folders: [{ path, count }], truncated }: the
-//                                 folders of a repository that hold notes; direct = the address
-//                                 already names one folder or file
-//   addGithub(url, sub?)       -> root (a folder or one .md file of a GitHub repository, downloaded);
-//                                 `sub` narrows a whole repository to one folder from githubFolders()
-//   updateGithub(id)           -> { added, changed, removed } (.md paths)
+//   githubFolders(url)         -> { direct, repo, ref, total, folders: [{ path, count }], truncated, skipped }:
+//                                 the folders of a repository that hold notes, those of its
+//                                 submodules included; direct = the address already names one
+//                                 folder or file; skipped = submodules that could not be read
+//   addGithub(url, sub?)       -> root (a folder or one .md file of a GitHub repository, downloaded),
+//                                 with `skipped` as above; `sub` narrows a whole repository to
+//                                 one folder from githubFolders()
+//   updateGithub(id)           -> { added, changed, removed, skipped } (.md paths; skipped as above)
 //   githubToken()              -> true when a token is saved; it can never be read back
 //   saveGithubToken(token), clearGithubToken()
 //   removeRoot(id)
