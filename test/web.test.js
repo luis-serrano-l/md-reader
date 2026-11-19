@@ -200,6 +200,16 @@ test('list of notes: the whole repository, a submodule as the source, and a sing
   assert.equal(asked.length, 1);
 });
 
+test('list of notes: a submodule whose own .gitmodules cannot be read keeps its notes', async () => {
+  const repos = hub();
+  delete repos['octo/lib'][LIB].files['.gitmodules'];
+  fakeGithub(repos);
+  const got = await fetchFiles({ repo: 'octo/notes', ref: 'main', sub: 'docs', kind: 'folder' });
+  assert.deepEqual(Object.keys(got.files).sort(), ['a.md', 'lib/README.md', 'lib/docs/guide.md']);
+  assert.deepEqual(got.mounts, [{ path: 'docs/lib', repo: 'octo/lib', ref: LIB }]);
+  assert.deepEqual(got.skipped, ['docs/lib/nested', 'docs/away', 'docs/secret']);
+});
+
 test('list of notes: a failure that is not "not found" fails the reading instead of shortening it', async () => {
   const repos = hub();
   repos['octo/lib'] = { status: 403, headers: { 'x-ratelimit-remaining': '0' } };

@@ -208,7 +208,9 @@ async function readAll(repo, ref, scope) {
       .filter((link) => scope !== null && !link.path.split('/').some(SKIP) && inScope(link.path, scope));
     if (!links.length) return;
     const listed = tree.some((e) => e.path === '.gitmodules' && e.type === 'blob');
-    const addresses = listed ? parseGitmodules(await once(`text ${at} ${rev}`, () => readText(at, rev, '.gitmodules'))) : new Map();
+    // A .gitmodules that cannot be read leaves the submodules out, not the repository itself.
+    const text = listed ? await once(`text ${at} ${rev}`, () => readText(at, rev, '.gitmodules')).catch((err) => (err.notFound ? '' : Promise.reject(err))) : '';
+    const addresses = parseGitmodules(text);
     for (const link of links) {
       const sub = submoduleRepo(at, addresses.get(link.name));
       if (!sub || !isFolderPath(link.path) || !COMMIT.test(link.sha) || depth >= MAX_SUBMODULE_DEPTH || taken >= MAX_SUBMODULES) {
