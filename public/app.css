@@ -21,14 +21,28 @@
   --desk: #ddd8cc;
   --danger: #8a2d2d;
   --ui-font: "Noto Sans", "DejaVu Sans", system-ui, sans-serif;
-  --sidebar-w: 290px;
-  --outline-w: 250px;
+  /* Sizes and spaces follow the golden ratio: the steps are 3 5 8 13 21 34 55 89 ... 233 377 610 px
+     (each the one before times phi, 1.618), with a half step (times its root, 1.272) where a
+     whole one is too far: 27, 43, 296, 480. Text sizes are quarter steps around 13px. */
+  --sidebar-w: 296px;           /* the outline's width and a half step */
+  --outline-w: 233px;
+  --over-w: min(377px, 85.4vw); /* a panel that lies over the note */
   --radius: 8px;
+  --radius-s: 5px;
+  --btn: 34px;                  /* an icon button */
+  --tap: 43px;                  /* the same under a finger: a half step more */
+  --text-xs: 11.5px;
+  --text-s: 13px;
+  --text: 14.7px;
+  --text-l: 16.5px;
+  --text-xl: 18.6px;
+  --tight: 1.272;               /* line heights: lists, and text that is read */
+  --loose: 1.618;
 }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { background: var(--desk); color: var(--ui-ink); font-family: var(--ui-font); font-size: 14px; }
+body { background: var(--desk); color: var(--ui-ink); font-family: var(--ui-font); font-size: var(--text); }
 [hidden] { display: none !important; }
 
 .app { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--outline-w); height: 100vh; height: 100dvh; }
@@ -46,7 +60,7 @@ body { background: var(--desk); color: var(--ui-ink); font-family: var(--ui-font
                background: var(--ui-status); }
 
 /* Buttons: a tinted fill and no border; the filled accent is kept for the one main action. */
-.btn { font: inherit; font-weight: 500; padding: 7px 14px; border: 0; border-radius: var(--radius); background: var(--ui-btn);
+.btn { font: inherit; font-weight: 500; padding: 8px 13px; border: 0; border-radius: var(--radius); background: var(--ui-btn);
        color: var(--ui-ink); cursor: pointer; white-space: nowrap; transition: background-color 0.12s, transform 0.06s; }
 .btn:hover { background: var(--ui-btn-hover); }
 .btn:active { transform: translateY(1px); }
@@ -54,14 +68,14 @@ body { background: var(--desk); color: var(--ui-ink); font-family: var(--ui-font
 .btn.primary:hover { background: var(--ui-accent-hover); }
 .btn.danger { color: var(--danger); }
 .btn:disabled { opacity: 0.5; cursor: default; transform: none; }
-.icon-btn { display: inline-grid; place-items: center; font: inherit; width: 34px; height: 34px; padding: 0; border: 0;
+.icon-btn { display: inline-grid; place-items: center; font: inherit; width: var(--btn); height: var(--btn); padding: 0; border: 0;
             border-radius: var(--radius); background: none; color: var(--ui-ink); cursor: pointer; flex: none;
             transition: background-color 0.12s, color 0.12s; }
 .icon-btn:hover { background: var(--ui-btn); }
 .icon-btn:active { background: var(--ui-btn-hover); }
 .icon-btn[aria-pressed="true"] { background: var(--ui-active); color: var(--ui-head); }
 .icon-btn:disabled { opacity: 0.5; cursor: default; }
-.icon { display: block; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.75;
+.icon { display: block; width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.75;
         stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 :focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
@@ -72,208 +86,215 @@ body { background: var(--desk); color: var(--ui-ink); font-family: var(--ui-font
 /* Sidebar */
 .sidebar { background: var(--ui-bg); border-right: 1px solid var(--ui-line); display: flex; flex-direction: column; min-height: 0;
            padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); }
-.sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 10px 14px;
+.sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 13px;
                 border-bottom: 1px solid var(--ui-line); }
 /* The button that adds a source: the same icon as "folders of this repository", larger. */
-.icon-btn.add-btn { flex: none; width: 40px; height: 40px; background: var(--ui-accent); color: var(--ui-accent-ink); }
+.icon-btn.add-btn { flex: none; width: var(--tap); height: var(--tap); background: var(--ui-accent); color: var(--ui-accent-ink); }
 .icon-btn.add-btn:hover, .icon-btn.add-btn:active { background: var(--ui-accent-hover); }
-.add-btn .icon { width: 24px; height: 24px; }
+.add-btn .icon { width: 27px; height: 27px; }
 .brand { font-weight: 700; color: var(--ui-head); letter-spacing: 0.01em; }
-.roots { overflow-y: auto; padding: 8px 6px calc(24px + env(safe-area-inset-bottom)); flex: 1; }
-.roots-empty { color: var(--ui-muted); padding: 10px; line-height: 1.5; }
+.roots { overflow-y: auto; padding: 8px 5px calc(21px + env(safe-area-inset-bottom)); flex: 1; }
+.roots-empty { color: var(--ui-muted); padding: 8px; line-height: var(--loose); }
 
-.root { margin-bottom: 10px; position: relative; }
-.root summary, .dir summary { cursor: pointer; list-style: none; border-radius: 6px; padding: 5px 8px; }
+.root { margin-bottom: 13px; position: relative; }
+.root summary, .dir summary { cursor: pointer; list-style: none; border-radius: var(--radius-s); padding: 5px 8px; }
 .root summary::-webkit-details-marker, .dir summary::-webkit-details-marker { display: none; }
 /* The mark of a folder that opens: a small angle, turned down when it is open. */
-.root summary::before, .dir summary::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 8px 2px 1px;
+.root summary::before, .dir summary::before { content: ""; display: inline-block; width: 5px; height: 5px; margin: 0 8px 2px 0;
   border: solid var(--ui-muted); border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); }
 details[open] > summary::before { transform: rotate(45deg); margin-bottom: 3px; }
 .root summary:hover, .dir summary:hover { background: var(--ui-bg-2); }
 .root-name { font-weight: 700; }
-.root-kind { margin-left: 6px; padding: 1px 6px; border-radius: 99px; background: var(--ui-btn); color: var(--ui-muted);
-             font-size: 11px; font-weight: 500; vertical-align: 1px; }
-.root-path { display: block; padding-left: 15px; color: var(--ui-muted); font-size: 11.5px; overflow: hidden;
+.root-kind { margin-left: 5px; padding: 1px 5px; border-radius: 99px; background: var(--ui-btn); color: var(--ui-muted);
+             font-size: var(--text-xs); font-weight: 500; vertical-align: 1px; }
+.root-path { display: block; padding-left: 13px; color: var(--ui-muted); font-size: var(--text-xs); overflow: hidden;
              text-overflow: ellipsis; white-space: nowrap; }
 /* What can be done with a source (its folders, update, remove): shown over the end of its
    name while the pointer is on it, always there on a touch screen. */
-.root-actions { position: absolute; top: 3px; right: 4px; display: flex; gap: 1px; visibility: hidden; border-radius: var(--radius);
+.root-actions { position: absolute; top: 3px; right: 3px; display: flex; gap: 1px; visibility: hidden; border-radius: var(--radius);
                 background: var(--ui-bg-2); }
 .root:hover .root-actions, .root-actions:focus-within, .root.busy .root-actions { visibility: visible; }
-.root-actions .icon-btn { width: 28px; height: 28px; color: var(--ui-muted); }
-.root-actions .icon { width: 17px; height: 17px; }
+.root-actions .icon-btn { width: 27px; height: 27px; color: var(--ui-muted); }
+.root-actions .icon { width: 16.5px; height: 16.5px; }
 .root-actions .icon-btn:hover { color: var(--ui-accent); }
 .root-actions .root-remove:hover { color: var(--danger); }
 .root-actions .icon-btn:disabled { cursor: progress; }
-.root-note { color: var(--ui-muted); padding: 4px 22px; font-size: 12.5px; }
+.root-note { color: var(--ui-muted); padding: 3px 21px; font-size: var(--text-s); }
 
-.tree { list-style: none; margin: 0; padding: 0 0 0 12px; }
-.tree .tree { border-left: 1px solid var(--ui-line); margin-left: 14px; padding-left: 4px; }
+.tree { list-style: none; margin: 0; padding: 0 0 0 13px; }
+.tree .tree { border-left: 1px solid var(--ui-line); margin-left: 13px; padding-left: 3px; }
 .file { display: block; width: 100%; text-align: left; font: inherit; border: 0; background: none; color: var(--ui-ink);
-        padding: 5px 8px; border-radius: 6px; cursor: pointer; overflow-wrap: anywhere; line-height: 1.35; }
+        padding: 5px 8px; border-radius: var(--radius-s); cursor: pointer; overflow-wrap: anywhere; line-height: var(--tight); }
 .file:hover { background: var(--ui-bg-2); }
 .file.active { background: var(--ui-active); color: var(--ui-head); font-weight: 600; }
 .file .ext { color: var(--ui-muted); font-weight: 400; }
 
 /* Main column */
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.bar { display: flex; align-items: center; gap: 6px; background: var(--ui-bg); border-bottom: 1px solid var(--ui-line);
-       padding: calc(6px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) 6px calc(10px + env(safe-area-inset-left)); }
-.bar-sep { flex: none; width: 1px; height: 20px; margin: 0 4px; background: var(--ui-line); }
+.bar { display: flex; align-items: center; gap: 5px; background: var(--ui-bg); border-bottom: 1px solid var(--ui-line);
+       padding: calc(5px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 5px calc(8px + env(safe-area-inset-left)); }
+.bar-sep { flex: none; width: 1px; height: 21px; margin: 0 3px; background: var(--ui-line); }
 /* The name of the open note: a button that brings the list of notes, to choose another. */
-.crumb { flex: 0 1 auto; min-width: 0; height: 34px; margin-left: 2px; padding: 0 8px; border: 0; border-radius: var(--radius);
+.crumb { flex: 0 1 auto; min-width: 0; height: var(--btn); margin-left: 2px; padding: 0 8px; border: 0; border-radius: var(--radius);
          background: none; font: inherit; text-align: left; color: var(--ui-muted); cursor: pointer;
          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 0.12s; }
 .crumb:hover { background: var(--ui-btn); }
 .crumb:empty { display: none; }
 .bar-gap { flex: 1; }
 .crumb b { color: var(--ui-ink); font-weight: 600; }
-.page-info { margin: 0 6px; color: var(--ui-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.page-info { margin: 0 5px; color: var(--ui-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Smaller, the size, larger: one control. */
 .zoom { display: flex; align-items: center; border-radius: var(--radius); background: var(--ui-btn); }
 .zoom .icon-btn:hover, .zoom-value:hover { background: var(--ui-btn-hover); }
-.zoom-value { font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; min-width: 50px; height: 34px; padding: 0; border: 0;
+.zoom-value { font: inherit; font-size: var(--text-s); font-variant-numeric: tabular-nums; min-width: 55px; height: var(--btn); padding: 0; border: 0;
               border-radius: var(--radius); background: none; color: var(--ui-ink); cursor: pointer; }
 
 .desk { flex: 1; overflow: auto; outline: none;
-        padding: 28px max(24px, env(safe-area-inset-right)) calc(80px + env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); }
+        padding: 21px max(21px, env(safe-area-inset-right)) calc(89px + env(safe-area-inset-bottom)) max(21px, env(safe-area-inset-left)); }
 .desk .sheet, .desk .sheet.paged > .page { outline: 1px solid var(--sheet-edge);
-  box-shadow: 0 1px 2px var(--ui-shadow), 0 8px 28px var(--ui-shadow); }
+  box-shadow: 0 1px 2px var(--ui-shadow), 0 8px 34px var(--ui-shadow); }
 .desk .sheet { margin: 0 auto; }
 .desk .sheet.paged { outline: 0; box-shadow: none; }
-.desk .sheet.paged > .page + .page { margin-top: 22px; }
+.desk .sheet.paged > .page + .page { margin-top: 21px; }
 /* Where pages are cut before they are shown: laid out at the sheet's width, taking no room. */
 .measure { height: 0; overflow: hidden; visibility: hidden; }
-.notice { max-width: 520px; margin: 12vh auto 0; text-align: center; color: var(--ui-muted); line-height: 1.6; }
+.notice { max-width: 480px; margin: 14.6vh auto 0; text-align: center; color: var(--ui-muted); line-height: var(--loose); }
 .notice:empty { display: none; }
-.notice h2 { color: var(--ui-ink); font-size: 18px; margin: 0 0 6px; }
-.notice p { margin: 0 0 14px; }
+.notice h2 { color: var(--ui-ink); font-size: var(--text-xl); margin: 0 0 5px; }
+.notice p { margin: 0 0 13px; }
 .notice.error h2 { color: var(--danger); }
 
 /* Outline */
 .outline { background: var(--ui-bg); border-left: 1px solid var(--ui-line); overflow-y: auto;
-           padding: calc(14px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) 8px; }
-.outline-title { font-size: 12.5px; font-weight: 600; color: var(--ui-muted); padding: 0 8px 6px; }
-.outline a { display: block; padding: 4px 8px; border-radius: 6px; color: var(--ui-ink); text-decoration: none;
-             line-height: 1.35; font-size: 13px; border-left: 2px solid transparent; }
+           padding: calc(13px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) calc(21px + env(safe-area-inset-bottom)) 8px; }
+.outline-title { font-size: var(--text-s); font-weight: 600; color: var(--ui-muted); padding: 0 8px 5px; }
+.outline a { display: block; padding: 5px 8px; border-radius: var(--radius-s); color: var(--ui-ink); text-decoration: none;
+             line-height: var(--tight); font-size: var(--text-s); border-left: 2px solid transparent; }
 .outline a:hover { background: var(--ui-bg-2); }
-.outline a.lvl-3 { padding-left: 20px; color: var(--ui-muted); }
+.outline a.lvl-3 { padding-left: 21px; color: var(--ui-muted); }
 .outline a.lvl-1 { font-weight: 700; }
-.outline a.current { border-left-color: var(--ui-accent); background: var(--ui-active); color: var(--ui-head); border-radius: 0 6px 6px 0; }
+.outline a.current { border-left-color: var(--ui-accent); background: var(--ui-active); color: var(--ui-head); border-radius: 0 var(--radius-s) var(--radius-s) 0; }
 
 /* Dialogs. Never taller than the window: the text scrolls and the buttons stay in view. */
-.picker { border: 1px solid var(--ui-line); border-radius: 14px; padding: 0; width: min(640px, calc(100vw - 32px));
+.picker { border: 1px solid var(--ui-line); border-radius: 13px; padding: 0; width: min(610px, calc(100vw - 26px));
           max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); overflow: hidden;
-          background: var(--ui-bg); color: var(--ui-ink); box-shadow: 0 20px 60px var(--ui-shadow), 0 2px 8px var(--ui-shadow); }
+          background: var(--ui-bg); color: var(--ui-ink); box-shadow: 0 21px 55px var(--ui-shadow), 0 2px 8px var(--ui-shadow); }
 .picker[open] { display: flex; flex-direction: column; }
-.picker.ask { width: min(440px, calc(100vw - 32px)); }
+.picker.ask { width: min(377px, calc(100vw - 26px)); }
 .picker::backdrop { background: var(--ui-scrim); }
-.picker-form { padding: 18px 20px 0; display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; }
-.picker h2 { margin: 0; font-size: 17px; color: var(--ui-head); }
-.picker-help { margin: 0; color: var(--ui-muted); line-height: 1.5; }
+.picker-form { padding: 21px 21px 0; display: flex; flex-direction: column; gap: 13px; min-height: 0; overflow-y: auto; }
+.picker h2 { margin: 0; font-size: var(--text-l); color: var(--ui-head); }
+.picker-help { margin: 0; color: var(--ui-muted); line-height: var(--loose); }
 .picker-help.ok { color: var(--ui-accent); }
-.picker-help code { font: 12.5px "Fira Code", "DejaVu Sans Mono", monospace; }
-.picker-path { display: flex; gap: 6px; }
-.picker-path input { flex: 1; min-width: 0; font: 13px "Fira Code", "DejaVu Sans Mono", monospace; padding: 7px 10px;
+.picker-help code { font: var(--text-s) "Fira Code", "DejaVu Sans Mono", monospace; }
+.picker-path { display: flex; gap: 5px; }
+.picker-path input { flex: 1; min-width: 0; font: var(--text-s) "Fira Code", "DejaVu Sans Mono", monospace; padding: 8px 13px;
                      border: 1px solid var(--ui-line); border-radius: var(--radius); background: var(--ui-field); color: var(--ui-ink); }
-.picker-step { display: flex; flex-direction: column; gap: 10px; }
-.source-choices { display: flex; flex-direction: column; gap: 6px; }
-.source-choices button { display: block; width: 100%; text-align: left; font: inherit; padding: 10px 14px; cursor: pointer;
+.picker-step { display: flex; flex-direction: column; gap: 13px; }
+.source-choices { display: flex; flex-direction: column; gap: 5px; }
+.source-choices button { display: block; width: 100%; text-align: left; font: inherit; padding: 8px 13px; cursor: pointer;
                          border: 0; border-radius: var(--radius); background: var(--ui-btn); color: var(--ui-ink);
                          transition: background-color 0.12s; }
 .source-choices button:hover { background: var(--ui-btn-hover); }
 .source-choices b { display: block; color: var(--ui-head); }
-.source-choices span { color: var(--ui-muted); font-size: 12.5px; }
-.folder-choices { list-style: none; margin: 0; padding: 4px; max-height: min(46vh, 380px); min-height: 84px; overflow: auto;
+.source-choices span { color: var(--ui-muted); font-size: var(--text-s); }
+.folder-choices { list-style: none; margin: 0; padding: 3px; max-height: min(38.2vh, 377px); min-height: 89px; overflow: auto;
                   border: 1px solid var(--ui-line); border-radius: var(--radius); background: var(--ui-field); }
-.folder-choices label { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 5px; cursor: pointer; }
+.folder-choices label { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: var(--radius-s); cursor: pointer; }
 .folder-choices label:hover { background: var(--ui-bg-2); }
 .folder-choices input { flex: none; margin: 0; accent-color: var(--ui-accent); }
 .folder-choices .folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ui-ink); }
-.folder-choices .folder-count { flex: none; color: var(--ui-muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.folder-choices .folder-count { flex: none; color: var(--ui-muted); font-size: var(--text-s); font-variant-numeric: tabular-nums; }
 .folder-choices li:first-child .folder-name { font-weight: 600; color: var(--ui-head); }
 .folder-choices .have .folder-count { color: var(--ui-accent); }
-#mdr-github h3 { margin: 14px 0 4px; font-size: 13px; color: var(--ui-head); }
-.picker-error { margin: 0; color: var(--danger); min-height: 1.2em; }
-.picker-actions { display: flex; align-items: center; gap: 8px; position: sticky; bottom: 0; padding: 8px 0 16px;
+#mdr-github h3 { margin: 13px 0 3px; font-size: var(--text-s); color: var(--ui-head); }
+.picker-error { margin: 0; color: var(--danger); min-height: 1.272em; }
+.picker-actions { display: flex; align-items: center; gap: 8px; position: sticky; bottom: 0; padding: 8px 0 13px;
                   background: var(--ui-bg); }
 .picker-count { flex: 1; color: var(--ui-muted); }
 
 /* Fonts and colours panel */
-.settings { width: min(520px, calc(100vw - 32px)); }
-.settings-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; align-items: center; }
+.settings { width: min(480px, calc(100vw - 26px)); }
+.settings-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 13px; align-items: center; }
 .settings-grid label, .settings-grid > span { color: var(--ui-muted); }
-.settings-grid select { font: inherit; padding: 6px 8px; border: 1px solid var(--ui-line); border-radius: var(--radius);
+.settings-grid select { font: inherit; padding: 5px 8px; border: 1px solid var(--ui-line); border-radius: var(--radius);
                         background: var(--ui-field); color: var(--ui-ink); min-width: 0; width: 100%; }
-.settings-size { display: flex; align-items: center; gap: 10px; }
+.settings-size { display: flex; align-items: center; gap: 8px; }
 .settings-size input { flex: 1; min-width: 0; accent-color: var(--ui-accent); }
-.settings-size output { font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
+.settings-size output { font-variant-numeric: tabular-nums; min-width: 55px; text-align: right; }
 .settings-color { display: flex; align-items: center; gap: 8px; }
-.settings-color input { width: 44px; height: 30px; padding: 2px; border: 1px solid var(--ui-line); border-radius: var(--radius);
+.settings-color input { width: 55px; height: 34px; padding: 2px; border: 1px solid var(--ui-line); border-radius: var(--radius);
                         background: var(--ui-field); cursor: pointer; }
-.settings-color .btn { padding: 4px 10px; font-size: 12.5px; }
+.settings-color .btn { padding: 3px 8px; font-size: var(--text-s); }
 /* One of two: a track with the choices in it; the chosen one is filled. */
-.segmented { display: flex; gap: 2px; padding: 3px; border-radius: calc(var(--radius) + 2px); background: var(--ui-btn); }
-.segmented button { flex: 1; font: inherit; padding: 5px 10px; border: 0; border-radius: 7px; background: none;
+.segmented { display: flex; gap: 2px; padding: 3px; border-radius: var(--radius); background: var(--ui-btn); }
+.segmented button { flex: 1; font: inherit; padding: 5px 8px; border: 0; border-radius: var(--radius-s); background: none;
                     color: var(--ui-ink); cursor: pointer; transition: background-color 0.12s; }
 .segmented button:hover { background: var(--ui-btn-hover); }
 .segmented button[aria-pressed="true"] { background: var(--ui-accent); color: var(--ui-accent-ink); font-weight: 600; }
-.settings h3 { margin: 10px 0 0; font-size: 13px; color: var(--ui-head); }
+.settings h3 { margin: 13px 0 0; font-size: var(--text-s); color: var(--ui-head); }
 
-/* Below 1400px the outline lies over the note, from the right, and the note keeps its width
-   (a tablet on its side, a small laptop). Keep 1400px in step with outlineOverlays() in app.js. */
-@media (max-width: 1400px) {
+/* Below 1387px the outline lies over the note, from the right, and the note keeps its width
+   (a tablet on its side, a small laptop): the list (296), a full page (8.5in, 816), the desk's
+   paddings (2 x 21) and the outline (233) no longer fit side by side.
+   Keep 1387px in step with outlineOverlays() in app.js. */
+@media (max-width: 1387px) {
   .app, .app.no-outline { grid-template-columns: var(--sidebar-w) minmax(0, 1fr); }
   .app.no-sidebar, .app.no-sidebar.no-outline { grid-template-columns: 0 minmax(0, 1fr); }
-  .outline { position: fixed; inset: 0 0 0 auto; width: min(340px, 86vw); z-index: 5; border-left: 0;
-             box-shadow: 0 0 0 100vmax var(--ui-scrim), 0 0 40px var(--ui-shadow); }
+  .outline { position: fixed; inset: 0 0 0 auto; width: var(--over-w); z-index: 5; border-left: 0;
+             box-shadow: 0 0 0 100vmax var(--ui-scrim), 0 0 34px var(--ui-shadow); }
 }
-/* Tablet held upright, phone: the list of notes lies over the note too.
-   Keep 1000px in step with isNarrow() in app.js. */
-@media (max-width: 1000px) {
+/* Tablet held upright (the 13-inch iPad Pro is 1024 or 1032px wide), phone: the list of notes lies
+   over the note too. 1154px is where a full page and the desk's paddings stop fitting beside the
+   list (296 + 816 + 2 x 21). Keep 1154px in step with isNarrow() in app.js. */
+@media (max-width: 1154px) {
   .app, .app.no-outline, .app.no-sidebar, .app.no-sidebar.no-outline { grid-template-columns: minmax(0, 1fr); }
-  .sidebar { position: fixed; inset: 0 auto 0 0; width: min(340px, 86vw); z-index: 5; border-right: 0;
-             box-shadow: 0 0 0 100vmax var(--ui-scrim), 0 0 40px var(--ui-shadow); }
+  .sidebar { position: fixed; inset: 0 auto 0 0; width: var(--over-w); z-index: 5; border-right: 0;
+             box-shadow: 0 0 0 100vmax var(--ui-scrim), 0 0 34px var(--ui-shadow); }
   .main { grid-column: 1; grid-row: 1; }
 }
 @media (max-width: 760px) {
-  .desk { padding: 12px max(8px, env(safe-area-inset-right)) calc(60px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+  .desk { padding: 13px max(8px, env(safe-area-inset-right)) calc(55px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
   .crumb-root { display: none; }
-  .bar { gap: 2px; padding-left: calc(6px + env(safe-area-inset-left)); padding-right: calc(6px + env(safe-area-inset-right)); }
+  .bar { gap: 2px; padding-left: calc(5px + env(safe-area-inset-left)); padding-right: calc(5px + env(safe-area-inset-right)); }
   .bar-sep { margin: 0 2px; }
-  .zoom-value { min-width: 44px; }
+  .zoom-value { min-width: 43px; }
   .page-info { margin: 0 2px; }
 }
 @media (max-width: 480px) {
   .zoom-value, .bar-sep { display: none; }
+}
+/* The narrowest phones: the buttons of the bar keep their height and give some width to the note's name. */
+@media (max-width: 377px) {
+  .bar .icon-btn { width: var(--btn); }
 }
 /* Touch screens: nothing depends on hovering, and everything tapped is large enough. */
 @media (hover: none) {
   .root-actions { visibility: visible; background: none; }
 }
 @media (pointer: coarse) {
-  .icon-btn, .zoom-value { width: 40px; height: 40px; }
+  .icon-btn, .zoom-value { width: var(--tap); height: var(--tap); }
   .zoom-value { width: auto; }
-  .file, .root summary, .dir summary { padding-top: 9px; padding-bottom: 9px; }
+  .file, .root summary, .dir summary { padding-top: 8px; padding-bottom: 8px; }
   /* Room for the buttons of the source; --actions is how many it has (set in app.js). */
-  .root > details > summary { padding-right: calc(var(--actions, 1) * 37px + 6px); }
-  .root-actions .icon-btn { width: 36px; height: 36px; }
-  .outline a { padding-top: 7px; padding-bottom: 7px; }
-  .folder-choices label { padding-top: 9px; padding-bottom: 9px; }
+  .root > details > summary { padding-right: calc(var(--actions, 1) * 35px + 5px); }
+  .root-actions .icon-btn { width: var(--btn); height: var(--btn); }
+  .outline a { padding-top: 8px; padding-bottom: 8px; }
+  .folder-choices label { padding-top: 8px; padding-bottom: 8px; }
 }
 /* A short window (a phone on its side): the bar and the paddings give their room to the note. */
 @media (max-height: 520px) {
   .bar { padding-top: calc(3px + env(safe-area-inset-top)); padding-bottom: 3px; }
-  .icon-btn, .zoom-value { height: 34px; }
-  .bar .icon-btn { width: 36px; }
+  .icon-btn, .zoom-value { height: var(--btn); }
+  .bar .icon-btn { width: var(--btn); }
   .zoom-value, .crumb-root { display: none; }
-  .desk { padding-top: 8px; padding-bottom: calc(32px + env(safe-area-inset-bottom)); }
-  .sidebar-head { padding-top: 6px; padding-bottom: 6px; }
-  .file, .root summary, .dir summary { padding-top: 6px; padding-bottom: 6px; }
-  .notice { margin-top: 6vh; }
-  .picker-form { padding-top: 12px; gap: 8px; }
-  .picker-actions { padding-bottom: 10px; }
-  .settings { width: min(760px, calc(100vw - 32px)); }
+  .desk { padding-top: 8px; padding-bottom: calc(34px + env(safe-area-inset-bottom)); }
+  .sidebar-head { padding-top: 5px; padding-bottom: 5px; }
+  .file, .root summary, .dir summary { padding-top: 5px; padding-bottom: 5px; }
+  .notice { margin-top: 5.6vh; }
+  .picker-form { padding-top: 13px; gap: 8px; }
+  .picker-actions { padding-bottom: 8px; }
+  .settings { width: min(610px, calc(100vw - 26px)); }
   .folder-choices { max-height: none; overflow: visible; }
 }
 
@@ -286,15 +307,15 @@ details[open] > summary::before { transform: rotate(45deg); margin-bottom: 3px; 
 /* Beside a notch (a phone on its side) the window is filled with paper, not with the desk. */
 .app.reading .main { grid-column: 1; grid-row: 1; background: var(--print-paper, var(--desk));
                      padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
-.app.reading.chrome .bar { display: flex; position: fixed; z-index: 4; inset: 0 0 auto 0; box-shadow: 0 8px 28px var(--ui-shadow); }
+.app.reading.chrome .bar { display: flex; position: fixed; z-index: 4; inset: 0 0 auto 0; box-shadow: 0 8px 34px var(--ui-shadow); }
 .app.reading .bar :is(#mdr-toggle-sidebar, #mdr-toggle-outline, .bar-sep) { display: none; }
 /* The list of notes over the note (.list): asked for by a tap on the name in that bar. */
-.app.reading.list .sidebar { display: flex; position: fixed; inset: 0 auto 0 0; width: min(340px, 86vw); z-index: 6; border-right: 0;
-                             box-shadow: 0 0 0 100vmax var(--ui-scrim), 0 0 40px var(--ui-shadow); }
+.app.reading.list .sidebar { display: flex; position: fixed; inset: 0 auto 0 0; width: var(--over-w); z-index: 6; border-right: 0;
+                             box-shadow: 0 0 0 100vmax var(--ui-scrim), 0 0 34px var(--ui-shadow); }
 .app.reading .desk { padding: 0; }
 .app.reading .desk .sheet, .app.reading .desk .sheet.paged > .page { outline: 0; box-shadow: none; }
 /* The paper runs up under the clock; the first line starts below it. */
-.app.reading .desk .sheet:not(.paged) { padding-top: max(clamp(20px, 10.5%, var(--margin-y)), calc(env(safe-area-inset-top) + 12px)); }
+.app.reading .desk .sheet:not(.paged) { padding-top: max(clamp(21px, 10.5%, var(--margin-y)), calc(env(safe-area-inset-top) + 13px)); }
 /* Book mode (full screen in pages view): the pages lie side by side and the desk moves
    sideways, one screen at a time. The pages themselves are sized in study.css. */
 .app.book .desk { overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
@@ -320,14 +341,14 @@ details[open] > summary::before { transform: rotate(45deg); margin-bottom: 3px; 
 }
 /* The copy button of a code block (app.js adds it as the first thing in the block). It floats
    in the top right corner, so the code beside it wraps before it; fainter until pointed at. */
-.copy-btn { float: right; display: grid; place-items: center; width: 28px; height: 28px; margin: -5px -7px 2px 8px; padding: 0;
-            border: 0; border-radius: 6px; background: none; color: var(--pre-ink); opacity: 0.55; cursor: pointer;
+.copy-btn { float: right; display: grid; place-items: center; width: 27px; height: 27px; margin: -5px -8px 2px 8px; padding: 0;
+            border: 0; border-radius: var(--radius-s); background: none; color: var(--pre-ink); opacity: 0.55; cursor: pointer;
             transition: opacity 0.12s, background-color 0.12s; }
-.copy-btn .icon { width: 17px; height: 17px; }
+.copy-btn .icon { width: 16.5px; height: 16.5px; }
 .copy-btn:hover, .copy-btn:focus-visible, .copy-btn.done { opacity: 1; background: var(--rule, rgba(128, 128, 128, 0.2)); }
 .copy-btn:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 1px; }
 .copy-area { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
-@media (pointer: coarse) { .copy-btn { width: 34px; height: 34px; } }
+@media (pointer: coarse) { .copy-btn { width: var(--btn); height: var(--btn); } }
 @media (prefers-reduced-motion: reduce) { .copy-btn { transition: none; } }
 
 @media print {

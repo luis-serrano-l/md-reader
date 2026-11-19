@@ -120,7 +120,7 @@ same way, through its API; nothing is cloned and `git` is not needed.
 | Sliders | View (continuous or pages), fonts and colours. In pages view `Page Up` / `Page Down` move one page |
 | Four corners, or `F` | Full screen on or off (`Esc` also leaves; `F11` too in the desktop app) |
 | Two sheets, top right of a code block | Copy the code (not printed) |
-| Panel, right edge of the bar | Show or hide the outline. Below 1400px of width it lies over the note |
+| Panel, right edge of the bar | Show or hide the outline. Below 1387px of width it lies over the note |
 
 ### Reading full screen
 

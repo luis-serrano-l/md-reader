@@ -137,9 +137,12 @@ file busy".
   `app.css`, set by the same panel).
 - `public/app.css`: the shell (folder list, top bar, desk, outline, picker). The three panels
   have fixed grid columns; a hidden panel must not let another slide into its column. Up to
-  1000px wide the list of sources lies over the note (`isNarrow()` in `app.js` uses the same
-  query); below 1400px the outline does too (`outlineOverlays()`); touch rules sit under `(hover: none)`
+  1154px wide the list of sources lies over the note (`isNarrow()` in `app.js` uses the same
+  query); below 1387px the outline does too (`outlineOverlays()`); touch rules sit under `(hover: none)`
   and `(pointer: coarse)`, short windows (a phone on its side) under `(max-height: 520px)`.
+  Sizes and spaces are steps of the golden ratio (3 5 8 13 21 34 55 89 px, half steps 27 and 43;
+  the list at the top of `app.css`): take a new one from there, and the two panel breakpoints
+  are sums of those widths, so they move with them.
   A look that sets `--ui-bg` also sets `--ui-btn`, `--ui-btn-hover`, `--ui-shadow` and
   `--ui-scrim` (tested).
 - Full screen (`app.js`, "Full screen"): `.app.reading` on every platform, panels and bar

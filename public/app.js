@@ -25,8 +25,8 @@ const outline = $('mdr-outline');
 const crumb = $('mdr-crumb');
 // Below these widths a panel lies over the note instead of beside it (see app.css): the list
 // of notes on a tablet held upright or a phone, the outline already on a tablet on its side.
-const NARROW = window.matchMedia('(max-width: 1000px)');
-const OUTLINE_OVER = window.matchMedia('(max-width: 1400px)');
+const NARROW = window.matchMedia('(max-width: 1154px)');
+const OUTLINE_OVER = window.matchMedia('(max-width: 1387px)');
 const isNarrow = () => NARROW.matches;
 const outlineOverlays = () => OUTLINE_OVER.matches;
 const isTouch = () => window.matchMedia('(pointer: coarse)').matches;
