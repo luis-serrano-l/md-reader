@@ -133,7 +133,24 @@ async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, GuardError
     }
 }
 
-/// The token is write-only: the page can save or forget it and ask whether one is saved.
+/// The sources on GitHub are the page's own (`public/web-backend.js`); this only keeps them.
+#[tauri::command]
+fn get_github_sources(state: State<'_, AppState>) -> serde_json::Value {
+    state.store.lock().unwrap().github_sources()
+}
+
+#[tauri::command]
+fn save_github_sources(state: State<'_, AppState>, sources: serde_json::Value) -> CommandResult<()> {
+    state.store.lock().unwrap().save_github_sources(sources).map_err(message)
+}
+
+/// The saved token, for the page, which sends it to GitHub's API with its requests.
+#[tauri::command]
+fn github_token(state: State<'_, AppState>) -> Option<String> {
+    github::read_token(&state.store.lock().unwrap().config_file())
+}
+
+/// The page can save or forget the token and ask whether one is saved.
 #[tauri::command]
 fn github_token_status(state: State<'_, AppState>) -> bool {
     github::has_token(&state.store.lock().unwrap().config_file())
@@ -318,6 +335,9 @@ pub fn run() {
             add_github,
             github_folders,
             update_github,
+            get_github_sources,
+            save_github_sources,
+            github_token,
             github_token_status,
             set_github_token,
             clear_github_token,

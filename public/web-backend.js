@@ -1,21 +1,25 @@
-// The hosted version (a static site, installable as a PWA): there is no server and no disk.
-// Every source is a GitHub repository, a folder in one or a single .md file, read through
-// GitHub's own API. The same rules as the local versions hold: only .md files are listed and
+// GitHub sources, for both versions: a repository, a folder in one or a single .md file, read
+// through GitHub's own API. The web version (a static site, installable as a PWA, with no server
+// and no disk) has nothing else; the desktop app uses this file for its GitHub sources and Rust
+// for the disk. The same rules as for local sources hold: only .md files are listed and
 // opened, only images are fetched besides, and a path never leaves the source that was added.
 // A submodule inside a source is read too: its files are listed where the repository has them,
 // and a path inside it is read from the submodule's own repository, at the commit that the
 // repository names (`mounts` of a source).
 //
-// What is kept, all of it in this browser on this device: the list of sources and the settings
-// (localStorage), the notes already opened (service worker cache, for reading offline), and the
-// GitHub token for private repositories (its own cache entry, which sw.js also reads so it can
-// fetch private images). The token is sent to api.github.com only.
+// What the web version keeps, all of it in this browser on this device: the list of sources and
+// the settings (localStorage), the notes already opened (service worker cache, for reading
+// offline), and the GitHub token for private repositories (its own cache entry, which sw.js also
+// reads so it can fetch private images). The desktop app keeps the list of sources in its config
+// file and the token in a file beside it (`store` and `tokens` given to webBackend()), and no
+// notes: there it needs the network. The token is sent to api.github.com only.
 import { isFolderPath, parseGithubUrl, parseGitmodules, submoduleRepo } from './github-url.js';
 
 const API = 'https://api.github.com';
 const RAW = 'https://raw.githubusercontent.com';
 const DOC = /\.md$/i;
 const IMAGE = /\.(svg|png|jpe?g|gif|webp)$/i;
+const IMAGE_TYPES = { svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 const TOKEN = /^[A-Za-z0-9_]{20,255}$/;
 const MAX_DOC_BYTES = 5 * 1024 * 1024;
 const MAX_FILES = 5000;
@@ -42,6 +46,9 @@ const local = {
     }
   },
 };
+
+// Where the list of sources is kept: this browser, unless webBackend() is given another place.
+let store = local;
 
 const encPath = (path) => path.split('/').map(encodeURIComponent).join('/');
 const dirOf = (path) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
@@ -73,11 +80,21 @@ async function forgetKept(repo) {
   }
 }
 
+// Where the token is kept: this browser, unless webBackend() is given another place.
+let tokens = {
+  usable: () => void privateStore(),
+  async read() {
+    const hit = await (await caches.open(TOKEN_CACHE)).match(tokenUrl());
+    return hit ? hit.text() : '';
+  },
+  save: async (token) => (await privateStore()).put(tokenUrl(), new Response(token)),
+  clear: async () => (await privateStore()).delete(tokenUrl()),
+};
+
 async function readToken() {
   if (tokenKnown !== undefined) return tokenKnown;
   try {
-    const hit = await (await caches.open(TOKEN_CACHE)).match(tokenUrl());
-    const token = hit ? (await hit.text()).trim() : '';
+    const token = String((await tokens.read()) || '').trim();
     tokenSaved = TOKEN.test(token);
     tokenKnown = tokenSaved ? token : null;
   } catch {
@@ -122,9 +139,10 @@ async function api(path, raw = false) {
 // Read again before every use: another tab or the installed app may have changed the list.
 let sources = [];
 const load = () => {
-  sources = local.get('sources', []).filter((s) => s && typeof s.id === 'string' && typeof s.repo === 'string');
+  const kept = store.get('sources', []);
+  sources = (Array.isArray(kept) ? kept : []).filter((s) => s && typeof s.id === 'string' && typeof s.repo === 'string');
 };
-const save = () => local.set('sources', sources);
+const save = () => store.set('sources', sources); // awaited: the desktop app writes a file
 load();
 
 function find(id) {
@@ -176,14 +194,14 @@ function resolveInside(source, rel, pattern) {
   if (!inside || !pattern.test(inside)) throw new Error('This file type cannot be opened.');
   const base = source.kind === 'file' ? dirOf(source.sub) : source.sub;
   // A file at the top of a repository does not open the whole repository's images: only those
-  // beside it (the local versions download no more than that either).
+  // beside it (a local file opens no more than that either).
   if (source.kind === 'file' && !base && inside.includes('/')) throw new Error('Path is outside the folder.');
   const full = base ? `${base}/${inside}` : inside;
   if (source.kind === 'file' && DOC.test(full) && full !== source.sub) throw new Error('Only the file that was added can be opened.');
   return { full, rel: inside, ...locate(source, full) };
 }
 
-const TOO_LARGE = 'This repository is too large for GitHub to list in one answer. Use the desktop app for it.';
+const TOO_LARGE = 'This repository is too large for GitHub to list in one answer. Clone it, and add its folder in the desktop app.';
 
 // All files of a repository at a branch, with those of the submodules inside the folder
 // `scope` listed where the repository has them ('' reads every submodule, null none):
@@ -358,6 +376,49 @@ const info = (s) => ({
   missing: false,
 });
 
+// ---------- Images of private repositories without a service worker ----------
+
+// `gh-asset?…` is answered by sw.js. Where no worker serves the page (the desktop app, or a
+// first visit), the images with such an address are fetched here with the token and shown from
+// memory. Only images, and only as images. `note` names the open note: the images made for
+// another one are let go. Resolves once every such image has its address (pages are cut after).
+let shown = { note: null, urls: new Map() };
+
+function forgetShown() {
+  for (const url of shown.urls.values()) url.then((made) => made && URL.revokeObjectURL(made));
+  shown = { note: null, urls: new Map() };
+}
+
+async function privateImage(address) {
+  const asked = new URLSearchParams(address.slice(address.indexOf('?') + 1));
+  const [repo, ref, path] = ['repo', 'ref', 'path'].map((name) => asked.get(name) || '');
+  const type = IMAGE_TYPES[path.slice(path.lastIndexOf('.') + 1).toLowerCase()];
+  if (!REPO_NAME.test(repo) || !ref || !type || path.split('/').some((part) => part === '' || part === '.' || part === '..')) return null;
+  try {
+    const res = await api(`/repos/${repo}/contents/${encPath(path)}?ref=${encodeURIComponent(ref)}`, true);
+    return URL.createObjectURL(new Blob([await res.arrayBuffer()], { type }));
+  } catch {
+    return null; // the image stays missing, as any image that cannot be fetched
+  }
+}
+
+function fillImages(container, note) {
+  if (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller) return Promise.resolve();
+  if (shown.note !== note) forgetShown();
+  shown.note = note;
+  const { urls } = shown;
+  const filled = [];
+  for (const img of container.querySelectorAll('img')) {
+    const address = img.getAttribute('src') || '';
+    if (!address.startsWith('gh-asset?')) continue;
+    if (!urls.has(address)) urls.set(address, privateImage(address));
+    filled.push(urls.get(address).then((made) => {
+      if (made && shown.urls === urls) img.src = made;
+    }));
+  }
+  return Promise.all(filled);
+}
+
 // ---------- Becoming an installable, offline-capable app ----------
 
 // The page's own rules, set here because a static host sends no headers: scripts and styles
@@ -366,7 +427,7 @@ function restrictPage() {
   const meta = document.createElement('meta');
   meta.httpEquiv = 'Content-Security-Policy';
   meta.content =
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; " +
+    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https:; " +
     `connect-src 'self' ${API} ${RAW}; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'`;
   document.head.prepend(meta);
   const manifest = document.createElement('link');
@@ -407,9 +468,20 @@ export async function setBrowserFullscreen(on) {
   return isFull();
 }
 
-export function webBackend() {
-  restrictPage();
-  const ready = Promise.all([startWorker(), readToken()]);
+// `hosted`: this is the whole app (the web version), so the page gets its rules and its service
+// worker here, and the settings are kept here too. The desktop app passes false, and where its
+// sources and its token are kept: `store` is { ready, get(key, fallback), set(key, value) },
+// `tokens` is { read(), save(token), clear() }.
+export function webBackend({ store: kept, tokens: keys, hosted = true } = {}) {
+  if (kept) store = kept;
+  if (keys) tokens = keys;
+  if (hosted) restrictPage();
+  const ready = Promise.all([hosted ? startWorker() : null, store.ready, readToken()]).catch(() => {});
+  const forHost = {
+    getSettings: async () => local.get('settings', {}),
+    saveSettings: async (settings) => local.set('settings', settings),
+    setFullscreen: setBrowserFullscreen,
+  };
   return {
     kind: 'web',
     async listRoots() {
@@ -417,6 +489,12 @@ export function webBackend() {
       load();
       return sources.map(info);
     },
+    // Whether a source is one of these (the desktop app has local ones too).
+    has(id) {
+      load();
+      return sources.some((s) => s.id === id);
+    },
+    fillImages,
     // The folders of a repository that hold notes, to choose from. `direct` means the address
     // already names one folder or one file.
     async githubFolders(url) {
@@ -443,7 +521,7 @@ export function webBackend() {
       Object.assign(source, read);
       load();
       sources = [...sources.filter((s) => s.id !== source.id), source];
-      save();
+      await save();
       return { ...info(source), skipped };
     },
     // Reads the list of notes again and says what is new, changed or gone.
@@ -458,35 +536,37 @@ export function webBackend() {
         skipped,
       };
       Object.assign(source, { files, truncated, mounts });
-      save();
+      await save();
+      forgetShown(); // an image may have changed too
       return result;
     },
     githubToken: async () => (await readToken()) !== null,
     async saveGithubToken(token) {
       if (typeof token !== 'string' || !TOKEN.test(token.trim())) throw new Error('That does not look like a GitHub token.');
-      const store = await privateStore();
-      // Asked once, so a miscopied or expired token is refused now and not at the first download.
+      tokens.usable?.();
+      // Asked once, so a miscopied or expired token is refused now and not at the first reading.
       const check = await fetch(`${API}/user`, {
         headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token.trim()}` },
         cache: 'no-store',
       }).catch(() => null);
       if (check && check.status === 401) throw new Error('GitHub does not accept that token. Check that all of it was copied and that it has not expired.');
-      await store.put(tokenUrl(), new Response(token.trim()));
+      await tokens.save(token.trim());
       tokenSaved = true;
       tokenKnown = token.trim();
       recent = null;
     },
     async clearGithubToken() {
-      await (await privateStore()).delete(tokenUrl());
+      await tokens.clear();
       tokenSaved = false;
       tokenKnown = null;
       recent = null;
+      forgetShown();
       await forgetKept(); // what was read with the token does not stay behind
     },
     async removeRoot(id) {
       const gone = find(id);
       sources = sources.filter((s) => s.id !== id);
-      save();
+      await save();
       const still = new Set(sources.flatMap(reposOf));
       for (const repo of new Set(reposOf(gone))) if (!still.has(repo)) await forgetKept(repo);
     },
@@ -502,22 +582,20 @@ export function webBackend() {
       return { path: at.rel, source: text };
     },
     // An image linked from a note. Public: straight from GitHub's file host. With a token: a
-    // local address that sw.js answers by fetching the image with the token.
+    // local address that sw.js answers by fetching the image with the token, or, where there
+    // is no worker, fillImages().
     assetUrl(id, path) {
       try {
         const source = find(id);
         const at = resolveInside(source, path, IMAGE);
-        // The local address needs the service worker; without it only public images load.
-        if (!tokenSaved || !navigator.serviceWorker?.controller) return `${RAW}/${at.repo}/${encPath(at.ref)}/${encPath(at.path)}`;
+        if (!tokenSaved) return `${RAW}/${at.repo}/${encPath(at.ref)}/${encPath(at.path)}`;
         return `gh-asset?repo=${encodeURIComponent(at.repo)}&ref=${encodeURIComponent(at.ref)}&path=${encodeURIComponent(at.path)}`;
       } catch {
         return 'data:,';
       }
     },
-    watch: () => () => {}, // nothing changes under a hosted page; "Update" asks GitHub again
-    getSettings: async () => local.get('settings', {}),
-    saveSettings: async (settings) => local.set('settings', settings),
-    setFullscreen: setBrowserFullscreen,
+    watch: () => () => {}, // nothing changes by itself in a GitHub source; "Update" asks GitHub again
+    ...(hosted ? forHost : {}),
   };
 }
 

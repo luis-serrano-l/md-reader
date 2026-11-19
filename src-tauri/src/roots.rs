@@ -20,6 +20,8 @@ const SKIP_DIRS: &[&str] = &["node_modules"];
 const MAX_TREE_DEPTH: usize = 8;
 const MAX_TREE_FILES: usize = 5000;
 const MAX_SETTINGS_BYTES: usize = 8 * 1024;
+/// Room for many large repositories: a source keeps the path and the id of each of its notes.
+const MAX_GITHUB_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -269,6 +271,22 @@ impl RootStore {
             return fail(Kind::BadRequest, "Settings are too large.");
         }
         self.write("settings", settings).or_else(|_| fail(Kind::BadRequest, "The settings could not be saved."))
+    }
+
+    /// The sources on GitHub, kept for the page, which reads them through GitHub's API
+    /// (`public/web-backend.js`). Stored as given and never read here: no path is built from it.
+    pub fn github_sources(&self) -> serde_json::Value {
+        self.read_file().remove("github").filter(|s| s.is_array()).unwrap_or_else(|| serde_json::json!([]))
+    }
+
+    pub fn save_github_sources(&self, sources: serde_json::Value) -> Result<(), GuardError> {
+        if !sources.is_array() {
+            return fail(Kind::BadRequest, "The GitHub sources must be a list.");
+        }
+        if sources.to_string().len() > MAX_GITHUB_BYTES {
+            return fail(Kind::BadRequest, "The list of GitHub sources is too large.");
+        }
+        self.write("github", sources).or_else(|_| fail(Kind::BadRequest, "The GitHub sources could not be saved."))
     }
 
     fn info(root: &Root) -> RootInfo {
@@ -707,6 +725,16 @@ mod tests {
         let reloaded = RootStore::new(f.store.file.clone());
         assert_eq!(reloaded.list().len(), 2);
         assert_eq!(reloaded.settings(), serde_json::json!({ "preset": "dark" }));
+        // The GitHub sources of the page are a third key, kept the same way.
+        assert_eq!(reloaded.github_sources(), serde_json::json!([]));
+        let sources = serde_json::json!([{ "id": "w0123abcd", "repo": "octo/notes", "ref": "main", "sub": "", "kind": "folder" }]);
+        reloaded.save_github_sources(sources.clone()).unwrap();
+        assert_eq!(reloaded.save_github_sources(serde_json::json!({})).unwrap_err().kind, Kind::BadRequest);
+        f.store.save_settings(serde_json::json!({ "preset": "sepia" })).unwrap();
+        let again = RootStore::new(f.store.file.clone());
+        assert_eq!(again.github_sources(), sources);
+        assert_eq!(again.list().len(), 2, "a source on GitHub is not a folder on disk");
+        assert_eq!(again.settings(), serde_json::json!({ "preset": "sepia" }));
     }
 
     #[test]

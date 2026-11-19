@@ -275,7 +275,7 @@ fn token_file(config_file: &Path) -> PathBuf {
     config_file.parent().unwrap_or_else(|| Path::new("/")).join("github-token")
 }
 
-fn read_token(config_file: &Path) -> Option<String> {
+pub fn read_token(config_file: &Path) -> Option<String> {
     let token = fs::read_to_string(token_file(config_file)).ok()?.trim().to_string();
     is_token(&token).then_some(token)
 }

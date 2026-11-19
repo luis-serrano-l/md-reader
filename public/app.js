@@ -1,5 +1,5 @@
 // md-reader front end. Everything that fetches notes goes through backend.js, which is Tauri
-// commands in the desktop app and GitHub's API in a browser. Markdown is rendered here.
+// commands for the disk (desktop app only) and GitHub's API in both versions. Markdown is rendered here.
 import { backend } from './backend.js';
 import { createRenderer } from './render.js';
 import { paginate, currentPage } from './pages.js';
@@ -171,7 +171,7 @@ function markActive() {
 
 async function removeRoot(root) {
   const what = root.github
-    ? `${backend.kind === 'web' ? '' : 'The downloaded copy is deleted. '}The repository on GitHub is not touched.`
+    ? 'The repository on GitHub is not touched.'
     : root.kind === 'file' ? 'The file stays on disk.' : 'The folder and its files stay on disk.';
   const yes = await ask(`Remove "${root.name}" from md-reader?`, what, 'Remove');
   if (!yes) return;
@@ -370,11 +370,20 @@ function whenImagesLoaded(within, limit) {
   return Promise.race([Promise.all(loaded), new Promise((resolve) => setTimeout(resolve, limit))]);
 }
 
+// Images of a private GitHub repository, where the page itself has to fetch them (backend.js).
+// Resolves when they have their addresses, or after `limit` ms.
+function fillImages(root, limit = 4000) {
+  const note = state.current && `${state.current.root}:${state.current.path}`;
+  const filled = backend.fillImages?.(root, note);
+  return filled ? Promise.race([filled, new Promise((resolve) => setTimeout(resolve, limit))]) : Promise.resolve();
+}
+
 function showContinuous() {
   // The HTML comes from render.js, which does not pass a note's raw HTML through.
   sheet.innerHTML = state.html;
   sheet.classList.remove('paged');
   addCopyButtons(sheet);
+  fillImages(sheet);
   renderOutline(state.toc);
 }
 
@@ -392,6 +401,7 @@ async function showPages() {
   desk.append(holder);
   try {
     // A page can only be cut right once the height of every picture is known.
+    await fillImages(work);
     await whenImagesLoaded(work, 4000);
     if (document.fonts?.status === 'loading') await document.fonts.ready;
     if (state.html !== html) return; // closed, or another note was opened meanwhile
@@ -974,7 +984,7 @@ const notRead = (paths) =>
     ? `${paths.length === 1 ? 'A submodule was' : 'Submodules were'} not read: ${names(paths)}. Only submodules that are on GitHub are read, and a private one needs a saved token that may read it.`
     : '';
 
-// Brings the downloaded copy up to date and says which notes changed.
+// Reads the list of notes on GitHub again and says which notes changed.
 async function updateRoot(root, button) {
   button.disabled = true;
   const row = button.closest('.root');
@@ -989,10 +999,9 @@ async function updateRoot(root, button) {
     if (parts.length) {
       await loadRoots();
       const open = state.current?.root === root.id ? state.current.path : null;
-      // A note that is gone says so in place of its text. A changed one is reloaded by the
-      // watcher where there is one; the hosted version has none.
+      // A note that is gone says so in place of its text; a changed one is read again.
       if (open && removed.includes(open)) await openDoc(root.id, open).catch(() => {});
-      else if (open && changed.includes(open) && backend.kind === 'web') await openDoc(root.id, open, { keepScroll: true }).catch(() => {});
+      else if (open && changed.includes(open)) await openDoc(root.id, open, { keepScroll: true }).catch(() => {});
     }
     const text = [parts.join(' ') || 'No note changed on GitHub.', notRead(skipped)].filter(Boolean).join(' ');
     await ask(parts.length ? `${root.name} was updated` : `${root.name} is up to date`, text);
@@ -1039,7 +1048,7 @@ function showGithubStep(folders) {
   githubError.textContent = '';
 }
 
-// While a listing or a download runs, the dialog can be neither left nor stepped back in.
+// While a listing or an adding runs, the dialog can be neither left nor stepped back in.
 function setGithubBusy(busy) {
   picking.busy = busy;
   for (const id of ['mdr-github-add', 'mdr-github-back', 'mdr-github-cancel']) $(id).disabled = busy;
@@ -1089,7 +1098,7 @@ function chosenFolders() {
 }
 
 const covers = (parent, path) => parent !== path && (parent === '' || path.startsWith(`${parent}/`));
-// For a repository already in the list: the folders to download and the ones to take out. A
+// For a repository already in the list: the folders to add and the ones to take out. A
 // folder that is a source goes when it is unticked, or when a folder around it is newly added.
 function folderChanges() {
   const have = picking.have || new Map();
@@ -1203,7 +1212,7 @@ async function addGithub() {
   if (gone.length) {
     const yes = await ask(
       gone.length === 1 ? `Remove "${folderName(gone[0])}" from md-reader?` : `Remove ${gone.length} folders from md-reader?`,
-      `${gone.length > 1 ? `${names(gone.map(folderName))}. ` : ''}${backend.kind === 'web' ? '' : 'The downloaded copy is deleted. '}The repository on GitHub is not touched.`,
+      `${gone.length > 1 ? `${names(gone.map(folderName))}. ` : ''}The repository on GitHub is not touched.`,
       'Remove',
     );
     if (!yes) return;
@@ -1227,7 +1236,7 @@ async function addGithub() {
       }
     }
     for (const [i, sub] of subs.entries()) {
-      busy.textContent = subs.length > 1 ? `Downloading ${sub} (${i + 1} of ${subs.length})…` : 'Downloading…';
+      busy.textContent = subs.length > 1 ? `Adding ${sub} (${i + 1} of ${subs.length})…` : 'Adding…';
       const root = await backend.addGithub(url, sub);
       added.push(root);
       // Not added a second time if a later one fails.
@@ -1268,7 +1277,7 @@ $('mdr-github-form').addEventListener('submit', (event) => {
   addGithub();
 });
 $('mdr-github-cancel').addEventListener('click', () => githubDialog.close());
-// Esc does not close the dialog in the middle of a download.
+// Esc does not close the dialog while a folder is being added.
 githubDialog.addEventListener('cancel', (event) => {
   if (picking.busy) event.preventDefault();
 });
@@ -1290,7 +1299,7 @@ $('mdr-github-token-clear').addEventListener('click', async () => {
 const SOURCES = [
   { title: 'Folder on this computer', text: 'All the .md files in it, sub-folders included.', add: () => pickLocal(false), local: true },
   { title: 'One file on this computer', text: 'Only that .md file. The rest of its folder stays closed.', add: () => pickLocal(true), local: true },
-  { title: 'From GitHub', text: 'A repository, a folder in it or one .md file, downloaded to read. Private ones with a token.', add: () => openGithub() },
+  { title: 'From GitHub', text: 'A repository, a folder in it or one .md file, read from GitHub. Private ones with a token.', add: () => openGithub() },
 ];
 
 function buildSourceChoices() {
