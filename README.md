@@ -63,18 +63,18 @@ The release build writes the program to `src-tauri/target/release/md-reader` and
    |---|---|
    | Folder on this computer | All its `.md` files, sub-folders included |
    | One file on this computer | Only that `.md` file; the rest of its folder stays closed |
-   | From GitHub | A repository, a folder in it, or one `.md` file, downloaded to read |
+   | From GitHub | A repository, a folder in it, or one `.md` file, read from GitHub |
 
    Folders and files on this computer are for the desktop app, which opens the system's
    dialog. The web version offers GitHub only.
 2. Click a note to read it.
-3. Remove a source with the bin button next to its name. Local files stay on disk; for a GitHub
-   source the downloaded copy is deleted and the repository is not touched.
+3. Remove a source with the bin button next to its name. Local files stay on disk, and a
+   repository on GitHub is not touched.
 
 ### GitHub sources
 
-Type an address in **Add → From GitHub** and press **Next**. The desktop app needs `git`
-(2.27 or newer) on the machine.
+Type an address in **Add → From GitHub** and press **Next**. Both versions read GitHub the
+same way, through its API; nothing is cloned and `git` is not needed.
 
 | Address | What happens |
 |---|---|
@@ -88,11 +88,14 @@ Type an address in **Add → From GitHub** and press **Next**. The desktop app n
 - The folder button on such an entry opens the list of folders again, with the ones you have
   ticked: tick another to add it, untick one to remove it.
 
-- Only what is asked for is downloaded (a shallow, sparse clone), into
-  `~/.local/share/md-reader/repos/`. The notes are then readable offline.
-- The update button on the entry (two arrows in a circle) updates the copy and lists the notes that are new, changed or removed.
-- The copy is read-only from the app's side: md-reader never commits or pushes. A branch name
-  with a `/` in it cannot be given in an address.
+- The list of notes is read when the source is added; each note is fetched when it is opened.
+- The update button on the entry (two arrows in a circle) reads the list again and names the notes that are new, changed or removed.
+- md-reader only reads: it never commits or pushes. A branch name with a `/` in it cannot be
+  given in an address.
+- **Without a network** the desktop app cannot open a note from GitHub (the web version keeps
+  the notes already opened). To read a repository offline on the desktop, clone it yourself
+  and add its folder. The same goes for a repository too large for GitHub to list in one
+  answer.
 - **Submodules** inside a folder you add are read with it, those of submodules too: their
   notes show where the repository has them, at the commit the repository names, and links and
   images work across the border. The list of folders counts them. A single file reads none.
@@ -104,11 +107,10 @@ Type an address in **Add → From GitHub** and press **Next**. The desktop app n
     update tries it again. At most 30 submodules per source, 5 deep.
 - **Private repositories**: paste a GitHub token in the same dialog and press **Save token**,
   once; it is then used for every repository. A fine-grained token with read-only "Contents"
-  access to the repositories is enough. The web version asks GitHub at once whether the token
-  is accepted. It is
-  saved in `~/.config/md-reader/github-token`, readable by your user only. The app can replace
-  or forget it but never shows it again, and hands it to `git` for one command at a time: it is
-  not written into the copy or its settings. Without a saved token, `git`'s own sign-in is used.
+  access to the repositories is enough. GitHub is asked at once whether the token is accepted.
+  The desktop app saves it in `~/.config/md-reader/github-token`, readable by your user only.
+  The app can replace or forget it but never shows it again. The page reads it to send it with
+  its requests, to `api.github.com` only.
 
 | Control | What it does |
 |---|---|
@@ -139,19 +141,20 @@ desktop app, in your browser).
 ## What the app can read
 
 - Nothing until a source is added. The list is saved in `~/.config/md-reader/config.json`
-  (override with the `MD_READER_CONFIG` environment variable; downloads from GitHub then go
-  next to that file instead).
+  (override with the `MD_READER_CONFIG` environment variable; the token file then goes next
+  to that file instead).
 - Documents: `.md` only.
 - Images linked from a note (`.svg .png .jpg .jpeg .gif .webp`), and only from inside an added
   folder.
 - A single file: that file only, plus the images in its own folder or below. A file that sits
   directly in the home folder or at the top of the disk shows no images.
 - Paths with `..` and symlinks that lead outside an added folder are refused. A GitHub source
-  never reads outside its downloaded copy, whatever links the repository holds.
+  is read from GitHub only and never opens a path outside the folder that was added.
 - The address of a submodule is text from the repository, so it is never handed on as it is:
   only one that names a GitHub repository is used, and then only its owner and name.
 - Raw HTML inside a note is shown as text, not run.
-- Desktop app: the page can call only the app's own commands; it has no general file access.
+- Desktop app: the page can call only the app's own commands; it has no general file access,
+  and it connects to `api.github.com` and `raw.githubusercontent.com` only.
 
 ## Web version (PWA)
 
@@ -207,13 +210,14 @@ remembered, and switching keeps the place being read.
 | `public/icons.js` | The icons of the buttons, drawn as SVG |
 | `public/settings.js` | Fonts and colours: the looks, the font lists, checking of stored values |
 | `public/backend.js` | The one place that talks to the desktop app or to GitHub |
-| `public/web-backend.js`, `sw.js`, `manifest.webmanifest`, `icons/` | Web version: GitHub reader, offline cache, install data |
-| `public/github-url.js` | Reads a GitHub address (web version; the desktop app has the same rules in Rust) |
+| `public/web-backend.js` | GitHub sources, in both versions; the whole back end of the web version |
+| `public/sw.js`, `manifest.webmanifest`, `icons/` | Web version: offline cache, install data |
+| `public/github-url.js` | Reads a GitHub address and the addresses of submodules |
 | `public/vendor/` | Browser builds of markdown-it and highlight.js (`npm run vendor` refreshes them) |
 | `src-tauri/src/lib.rs` | Desktop app: commands, image protocol, file watching |
 | `src-tauri/src/roots.rs` | Desktop app: list of sources and the path guard, with its tests |
-| `src-tauri/src/github.rs` | Desktop app: download and update with `git`, the saved token |
-| `test/` | Tests for the renderer, the settings, GitHub addresses and the web version's guard |
+| `src-tauri/src/token.rs` | Desktop app: the file that holds the GitHub token |
+| `test/` | Tests for the renderer, the settings, GitHub addresses, the GitHub guard and the desktop back end |
 | `.github/workflows/pages.yml` | Publishes `public/` to GitHub Pages |
 | `ROADMAP.md` | Planned work |
 | `CLAUDE.md` | Rules and map of the code for contributors (human or AI) |
@@ -222,11 +226,9 @@ remembered, and switching keeps the place being read.
 
 ```sh
 npm install                      # once, for the renderer tests
-npm test                         # renderer, settings, web version
-(cd src-tauri && cargo test)     # desktop app: path guard and GitHub code
+npm test                         # renderer, settings, GitHub sources, desktop back end
+(cd src-tauri && cargo test)     # desktop app: path guard, config file, token file
 npm run web                      # the web version on http://localhost:4747, to try a change
-# A real download from GitHub through the Rust code (needs the network):
-(cd src-tauri && XDG_DATA_HOME=/some/tmp cargo test -- --ignored)
 ```
 
 ## Roadmap

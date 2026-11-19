@@ -1,10 +1,11 @@
 # md-reader
 
 App that renders `.md` files from user-chosen sources (local folders, single local files,
-GitHub folders or files) with the "study PDF" look. One no-build front end (`public/`) with
-two back ends: a Tauri app (`src-tauri/`, desktop version, the only code that reads the disk)
-and GitHub's API (`public/web-backend.js`: the web version, a static site and PWA, wherever
-`public/` is opened in a browser). There is no server. See `README.md` for usage and
+GitHub folders or files) with the "study PDF" look. One no-build front end (`public/`). GitHub
+sources are read through GitHub's API by `public/web-backend.js` in both versions; that is all
+the web version has (a static site and PWA, wherever `public/` is opened in a browser). The
+Tauri app (`src-tauri/`, desktop version) adds local sources and is the only code that reads
+the disk. There is no server. See `README.md` for usage and
 `ROADMAP.md` for what is open.
 
 ## Commands
@@ -15,57 +16,54 @@ npm test                   # node --test, no extra tooling
 node --check public/app.js # syntax check for the front end
 npm run desktop            # desktop app from source (tauri dev)
 npm run desktop:build      # release binary + .deb under src-tauri/target/release
-(cd src-tauri && cargo test)   # path guard and GitHub code
+(cd src-tauri && cargo test)   # path guard, config file, token file
 npm run vendor             # refresh public/vendor/ from node_modules
 ```
 
 For manual testing of the desktop app, use a scratch list of sources so the owner's real one
 is untouched: `MD_READER_CONFIG=/some/tmp/config.json src-tauri/target/debug/md-reader`. With
-it set, GitHub downloads and the token file also go next to that file
-(`md-reader-data/`, `github-token`), not to the owner's.
-`(cd src-tauri && XDG_DATA_HOME=/some/tmp cargo test -- --ignored)` runs a real download. Close the desktop app before `npm run desktop:build`, or packaging fails with "Text
+it set, the list of GitHub sources (key `github` of that file) and the token file
+(`github-token`, next to it) are scratch too. Close the desktop app before `npm run desktop:build`, or packaging fails with "Text
 file busy".
 
 ## Rules that must not be broken
 
 - **`.md` only.** Documents are `.md`; the only other files served are images linked from a
   note. Do not add routes that serve other file types.
-- **One path guard per back end.** Desktop: every command and the `mdr` image protocol go
-  through `RootStore::resolve_inside` in `src-tauri/src/roots.rs`. Never build a file path from
-  request input anywhere else; a change to the guard comes with a test in the `tests` module
-  of `roots.rs`. Web: `resolveInside` in `public/web-backend.js`, tested in `test/web.test.js`.
-  The two follow the same rules; keep them so.
-- **Sources.** A config entry is a string (local folder) or `{ path, kind: "folder" | "file",
-  github? }`. A single file opens only itself, plus images in its folder or below (none when
-  that folder is the home folder or `/`). A source with `github` must resolve inside
-  `github.dir`; the guard checks it on every read, because a repository can hold links.
-- **GitHub code** (`src-tauri/src/github.rs`). The one
-  exception to "no path from request input": the download folder
-  `repos/<owner>/<repo>/<key>` is built from an address that `parse_github_url` has checked part
-  by part. Keep it so: no `..`, no leading `-`, nothing `git` could read as an option; always
-  `--` before addresses and paths. A folder chosen in the dialog (`sub` of `add_github`) is
-  checked by the same segment rule (`with_folder`; `isFolderPath` in the web version). Only
-  folders exactly three levels below `repos/` are ever deleted (the short-lived `list-…` clone
-  that `folders` reads file names from is one of them). The app only clones, fetches and resets: never a commit or a push.
+- **One path guard per kind of source.** Local (desktop only): every command and the `mdr`
+  image protocol go through `RootStore::resolve_inside` in `src-tauri/src/roots.rs`. Never
+  build a file path from request input anywhere else; a change to the guard comes with a test
+  in the `tests` module of `roots.rs`. GitHub (both versions): `resolveInside` in
+  `public/web-backend.js`, tested in `test/web.test.js`. The two follow the same rules; keep
+  them so.
+- **Sources.** Local: an entry of `roots` in the config file is a string (folder) or
+  `{ path, kind: "file" }`. A single file opens only itself, plus images in its folder or
+  below (none when that folder is the home folder or `/`). An entry with `github` (a copy
+  that an earlier version downloaded) is not loaded. GitHub: the list is the page's own
+  (`{ id, repo, ref, sub, kind, files, mounts }`), kept in `localStorage` by the web version
+  and under the key `github` of the config file by the desktop app. Rust stores that list as
+  given and never reads it: no path on disk is ever built from it.
+- **GitHub is read through its API only**, by the page (`web-backend.js`). There is no `git`
+  and no clone, and Rust makes no network request. An address is checked part by part by
+  `parseGithubUrl`, a folder chosen in the dialog by `isFolderPath` (no `..`, no empty or odd
+  segment); only what passed goes into a URL, each part encoded. The app only reads: never a
+  commit or a push.
 - **Submodules.** The address in `.gitmodules` is text from the repository: it is never
-  passed on. `submodule_repo` (`submoduleRepo` in `github-url.js`, same lists of good and bad
-  addresses in both tests) turns it into an owner and a name or refuses it, and the address
-  that `git` or `fetch` sees is built from those two. `git submodule` is never run. Desktop:
-  the commit is fetched into the clone and its files are written into the same working copy
-  (`update-index --force-remove`, `read-tree --prefix=<path>/ -u`), so the copy stays one
-  folder of plain files, with no repository inside it, and the path guard has no rule of its
-  own for submodules. Web: a source keeps `mounts` (`{ path, repo, ref }`, `ref` a full commit
-  id); only `locate`, called by `resolveInside`, turns a path into the repository it is read
-  from, and it checks each mount again. A submodule's path must pass the segment rule; there
-  is a limit on their number and depth in both back ends.
-- **The token is write-only.** Saved in `github-token` (mode 0600) next to the config file;
-  no route or command returns it, no error message contains it, and it reaches `git` only
-  through `GIT_CONFIG_*` environment variables of one command (never the URL, never
-  `.git/config`). In the web version it is in the browser's Cache storage (`mdr-private`),
-  read by `web-backend.js` and `sw.js`, and sent to `api.github.com` only.
+  passed on. `submoduleRepo` in `github-url.js` turns it into an owner and a name or refuses
+  it (lists of good and bad addresses in `test/github.test.js`), and the address that `fetch`
+  sees is built from those two. A source keeps `mounts` (`{ path, repo, ref }`, `ref` a full
+  commit id); only `locate`, called by `resolveInside`, turns a path into the repository it
+  is read from, and it checks each mount again. A submodule's path must pass the segment
+  rule; there is a limit on their number and depth.
+- **The token goes to `api.github.com` only.** The page needs it to send it, so it can read
+  it; nothing shows it again, no error message contains it, and it is never part of a URL or
+  of the list of sources. Desktop: saved in `github-token` (mode 0600) next to the config
+  file (`src-tauri/src/token.rs`), handed to the page by the `github_token` command. Web: in
+  the browser's Cache storage (`mdr-private`), read by `web-backend.js` and `sw.js`. Where no
+  service worker answers `gh-asset?…` (the desktop app), `fillImages()` fetches the images of
+  a private repository with it and shows them as blobs: images only, typed by extension.
 - **Nothing is readable until the user adds a source.** Do not pre-add any, and do not write
-  the owner's `~/.config/md-reader/config.json`, `github-token` or
-  `~/.local/share/md-reader/` from code or during testing.
+  the owner's `~/.config/md-reader/config.json` or `github-token` from code or during testing.
 - **The desktop page gets no plugin permissions.** `src-tauri/capabilities/default.json` grants
   `core:default` only. The folder dialog and the link opener are called from Rust commands
   (`pick_folder`, `open_external`), never from the page.
@@ -74,14 +72,16 @@ file busy".
   rendered HTML with `innerHTML` and relies on that.
 - **No inline styles or inline scripts.** The page's Content-Security-Policy forbids them (set
   in `src-tauri/tauri.conf.json` for the desktop app; the web version adds its own as a
-  `<meta>` from `web-backend.js`, since a static host sends none; keep the two in step). Table
+  `<meta>` from `web-backend.js`, since a static host sends none; keep the two in step: both
+  allow connections to `api.github.com` and `raw.githubusercontent.com` and nowhere else). Table
   alignment is a class (`align-right`), not a `style` attribute. Setting `element.style` from
   JavaScript is fine.
 - **No Electron, ever** (owner's rule: too heavy on RAM). The desktop app, when built, is Tauri.
 - **Keep it light.** No bundler, no framework, no build step. The page uses three libraries, committed as browser builds in `public/vendor/`:
   `markdown-it`, `markdown-it-task-lists`, `highlight.js`. Rust crates: `tauri`,
   `tauri-plugin-dialog`, `tauri-plugin-opener`, `notify`, `serde`, `serde_json`,
-  `percent-encoding`. GitHub sources run the `git` program; there is no git or HTTP library. Development only (npm): `@tauri-apps/cli` (builds the desktop app) and
+  `percent-encoding`. There is no git or HTTP library, and the `git` program is not run: the
+  page's own `fetch` reads GitHub. Development only (npm): `@tauri-apps/cli` (builds the desktop app) and
   `@highlightjs/cdn-assets` (the browser build of highlight.js copied into `public/vendor/`).
   Ask before adding another to any of these lists.
 
@@ -105,34 +105,31 @@ file busy".
   colour. The desktop app stores them under `settings` in the config file, written one key
   at a time (`write()`), keeping the rest as it is on disk; the web version uses `localStorage`.
 - `public/backend.js`: the only file that knows which back end is there. `window.__TAURI__`
-  present: Tauri commands; otherwise the web version. New back-end calls go here, with both
-  implementations where both can have them.
-- `public/web-backend.js`: the web back end. Sources and settings in `localStorage`, notes
+  present: `desktopBackend`, which sends a call to Tauri commands or to the GitHub back end
+  by whose source it names (`github.has(id)`); otherwise the web version. New back-end calls
+  go here. `test/desktop.test.js` runs it against stand-ins for Tauri and GitHub.
+- `public/web-backend.js`: GitHub sources, for both versions. `webBackend({ store, tokens,
+  hosted })`: the desktop app passes where its list and its token are kept and `hosted:
+  false`; the web version passes nothing and gets `localStorage`, Cache storage, the page's
+  CSP, the service worker and the settings. Notes come
   from `raw.githubusercontent.com` (or the API with a token), the list of notes from the git
   trees API (`readAll`: one request per repository, one more per submodule; "not found" leaves
-  a submodule out, any other failure fails the reading). It also registers `sw.js` and adds the manifest link, so the desktop app never
-  has a service worker. `public/sw.js`: keeps the app and opened notes for offline use and
+  a submodule out, any other failure fails the reading). Only when `hosted` it registers `sw.js` and adds the manifest link, so the desktop app never
+  has a service worker and keeps no notes: there GitHub sources need the network. `public/sw.js`: keeps the app and opened notes for offline use and
   answers `gh-asset?...` (images of private repositories, as images only). A file added to
   `public/` must be added to `FILES` in `sw.js`. All URLs in the page are relative, so the site works below a sub-path.
 - `.github/workflows/pages.yml`: publishes `public/` to GitHub Pages on a push to `main`.
   The repository is public: never commit a token, a personal address or a private path.
-- `public/github-url.js`: `parseGithubUrl`, `submoduleRepo` and `parseGitmodules` (the desktop
-  app lets `git config --blob` read that file), pure, used by `web-backend.js`. `github.rs` has
-  the same rules; the tests in `test/github.test.js` and in
-  `github.rs` use the same lists of good and bad addresses.
-- `src-tauri/src/lib.rs`: the desktop back end. Commands `list_roots`,
-  `add_root`, `add_file`, `github_folders`, `add_github`, `update_github`, `github_token_status`,
-  `set_github_token`, `clear_github_token`, `remove_root`, `tree`, `read_doc`, `watch_doc`,
-  `pick_folder`, `pick_file`, `open_external`, `set_fullscreen` (`git` runs through
-  `blocking()`, off the async workers, with the store unlocked); the `mdr://` protocol serves images; a `doc-changed` event tells the page that the open note changed on disk.
-- `src-tauri/src/roots.rs`: the list of sources (load/save of the config file), the path
-  guard, the file tree. `src-tauri/src/github.rs`: `download`, `update`, `discard`, the token
-  file, and running `git` (timeout, own process group, token through the environment).
-  `Submodules::walk` reads the submodules of a clone: with `checkout` it writes their files
-  into the copy (after a clone and after every reset, which takes them out again), without
-  it only the file names are collected for `folders`. `update` compares the notes in the
-  index before and after (`notes`, `changes`), which covers submodules too. The tests build
-  repositories on disk that stand in for GitHub (`Hub`), so they need `git` but no network.
+- `public/github-url.js`: `parseGithubUrl`, `submoduleRepo` and `parseGitmodules`, pure, used
+  by `web-backend.js`; lists of good and bad addresses in `test/github.test.js`.
+- `src-tauri/src/lib.rs`: the desktop back end, for what is on this computer. Commands
+  `list_roots`, `add_root`, `add_file`, `remove_root`, `tree`, `read_doc`, `watch_doc`,
+  `unwatch_doc`, `get_settings`, `save_settings`, `get_github_sources`, `save_github_sources`,
+  `github_token`, `set_github_token`, `clear_github_token`, `pick_folder`, `pick_file`,
+  `open_external`, `set_fullscreen`; the `mdr://` protocol serves images; a `doc-changed` event tells the page that the open note changed on disk.
+- `src-tauri/src/roots.rs`: the list of local sources (load/save of the config file), the path
+  guard, the file tree, and the keys `settings` and `github` of the config file, each stored
+  as the page gives it. `src-tauri/src/token.rs`: the token file.
 - `public/study.css`: the look of the note. A port of the stylesheet behind the study PDFs
   (`~/notes/middle-term-exam-prep/readme-study.css`). Every font and colour is a
   CSS custom property on `.sheet`; add new ones there instead of hard-coding values, because the
@@ -177,5 +174,10 @@ file busy".
 - Web version: `npm run web` and open `http://localhost:4747` in Chrome (localhost counts as
   a secure origin, so the service worker runs). For tablet and phone sizes use device emulation
   (`Emulation.setDeviceMetricsOverride` through the DevTools protocol), not the window size.
+- GitHub sources in the desktop app: the accessibility interface cannot type into the window's
+  fields, and a source's update and remove buttons show on hover only. Put a source into the
+  scratch config (key `github`) to try the window; try the dialogs in Chrome with a stand-in
+  for `window.__TAURI__` (`Page.addScriptToEvaluateOnNewDocument`), which gives the page the
+  desktop back end.
 - Front-end behaviour (clicks, panels, full screen) is not covered by tests. Say so when it was
   not tried in a browser.

@@ -1,6 +1,6 @@
-// Reads a GitHub address. Pure (no DOM, no Node), used by the web version (web-backend.js);
-// the desktop app has the same rules in src-tauri/src/github.rs, tested with the same lists
-// of good and bad addresses (test/github.test.js). Errors carry a `status` (400 or 403).
+// Reads a GitHub address. Pure (no DOM, no Node), used by web-backend.js in both versions and
+// tested with lists of good and bad addresses (test/github.test.js). Errors carry a `status`
+// (400 or 403).
 const OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const REPO = /^[A-Za-z0-9._-]{1,100}$/;
 const REF = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
@@ -67,8 +67,7 @@ export function parseGithubUrl(input) {
 
 // The repository that the address of a submodule names, as "owner/name", or null when it is
 // not one on GitHub. `parent` is the "owner/name" of the repository whose .gitmodules holds
-// the address: one like "../other.git" is relative to it. Same rules as `submodule_repo` in
-// github.rs.
+// the address: one like "../other.git" is relative to it.
 const HOSTS = ['https://github.com/', 'https://www.github.com/', 'git@github.com:', 'ssh://git@github.com/', 'git://github.com/'];
 export function submoduleRepo(parent, address) {
   if (typeof parent !== 'string' || typeof address !== 'string') return null;

@@ -14,7 +14,7 @@
 //                                 with `skipped` as above; `sub` narrows a whole repository to
 //                                 one folder from githubFolders()
 //   updateGithub(id)           -> { added, changed, removed, skipped } (.md paths; skipped as above)
-//   githubToken()              -> true when a token is saved; it can never be read back
+//   githubToken()              -> true when a token is saved
 //   saveGithubToken(token), clearGithubToken()
 //   removeRoot(id)
 //   tree(rootId)               -> { nodes, truncated }
@@ -46,12 +46,6 @@ function tauriBackend({ core, event }) {
     listRoots: () => call('list_roots'),
     addRoot: (path) => call('add_root', { path }),
     addFile: (path) => call('add_file', { path }),
-    addGithub: (url, sub = '') => call('add_github', { url, sub }),
-    githubFolders: (url) => call('github_folders', { url }),
-    updateGithub: (root) => call('update_github', { root }),
-    githubToken: () => call('github_token_status'),
-    saveGithubToken: (token) => call('set_github_token', { token }),
-    clearGithubToken: () => call('clear_github_token'),
     removeRoot: (id) => call('remove_root', { id }),
     tree: (root) => call('tree', { root }),
     readDoc: (root, path) => call('read_doc', { root, path }),

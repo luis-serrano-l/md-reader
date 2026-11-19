@@ -59,7 +59,6 @@ test('a chosen folder is checked like the path of an address', () => {
   }
 });
 
-// The same lists as `a_submodule_address_must_name_a_github_repository` in github.rs.
 test('the address of a submodule must name a GitHub repository', () => {
   for (const address of [
     'https://github.com/octo/lib',

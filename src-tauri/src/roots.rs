@@ -2,10 +2,11 @@
 //! `RootStore::resolve_inside`, the only place that turns a request into a file path.
 //!
 //! A source is a folder (all its `.md` files) or a single `.md` file. In the config file a
-//! plain folder is a string; anything else is `{ path, kind: "folder" | "file", github? }`,
-//! where `github` describes the repository a downloaded copy came from (`github.rs`).
+//! plain folder is a string; a single file is `{ path, kind: "file" }`. Sources on GitHub are
+//! not in this list: the page reads them itself (`public/web-backend.js`), and this file only
+//! keeps their list for it, under another key (`github_sources`).
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::cmp::Ordering;
 use std::fmt;
 use std::fs;
@@ -52,30 +53,11 @@ pub enum SourceKind {
     File,
 }
 
-/// Where a downloaded copy came from. `dir` is the clone on disk; the page never sees it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Github {
-    pub repo: String,
-    #[serde(rename = "ref")]
-    pub git_ref: String,
-    pub sub: String,
-    pub dir: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct GithubInfo {
-    pub repo: String,
-    #[serde(rename = "ref")]
-    pub git_ref: String,
-    pub sub: String,
-}
-
 #[derive(Debug, Clone)]
 pub struct Root {
     pub id: String,
     pub path: PathBuf,
     pub kind: SourceKind,
-    pub github: Option<Github>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -84,7 +66,6 @@ pub struct RootInfo {
     pub path: String,
     pub name: String,
     pub kind: &'static str,
-    pub github: Option<GithubInfo>,
     pub missing: bool,
 }
 
@@ -92,7 +73,7 @@ pub struct RootInfo {
 fn read_entry(entry: &serde_json::Value) -> Option<Root> {
     if let Some(text) = entry.as_str() {
         let path = PathBuf::from(text);
-        return path.is_absolute().then(|| Root { id: root_id(&path), path, kind: SourceKind::Folder, github: None });
+        return path.is_absolute().then(|| Root { id: root_id(&path), path, kind: SourceKind::Folder });
     }
     let path = PathBuf::from(entry.get("path")?.as_str()?);
     if !path.is_absolute() {
@@ -103,27 +84,19 @@ fn read_entry(entry: &serde_json::Value) -> Option<Root> {
         "file" => SourceKind::File,
         _ => return None,
     };
-    let github = entry
-        .get("github")
-        .and_then(|g| serde_json::from_value::<Github>(g.clone()).ok())
-        .filter(|g| Path::new(&g.dir).is_absolute());
-    Some(Root { id: root_id(&path), path, kind, github })
+    // A copy that an earlier version downloaded from GitHub: the guard that kept it inside its
+    // download is gone, so it is not opened.
+    if entry.get("github").is_some() {
+        return None;
+    }
+    Some(Root { id: root_id(&path), path, kind })
 }
 
 fn write_entry(root: &Root) -> serde_json::Value {
     let path = root.path.to_string_lossy().into_owned();
-    match (&root.kind, &root.github) {
-        (SourceKind::Folder, None) => serde_json::json!(path),
-        (kind, github) => {
-            let mut entry = serde_json::json!({
-                "path": path,
-                "kind": if *kind == SourceKind::File { "file" } else { "folder" },
-            });
-            if let Some(github) = github {
-                entry["github"] = serde_json::json!(github);
-            }
-            entry
-        }
+    match root.kind {
+        SourceKind::Folder => serde_json::json!(path),
+        SourceKind::File => serde_json::json!({ "path": path, "kind": "file" }),
     }
 }
 
@@ -167,14 +140,6 @@ pub fn default_config_path() -> PathBuf {
 
 fn home_dir() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
-}
-
-/// A source downloaded from GitHub must be, links resolved, inside the folder of its download.
-fn require_inside_copy(real: &Path, github: &Github) -> Result<(), GuardError> {
-    match fs::canonicalize(&github.dir) {
-        Ok(copy) if real.starts_with(&copy) => Ok(()),
-        _ => fail(Kind::Forbidden, "This source leads outside its downloaded copy."),
-    }
 }
 
 /// True for a folder that is too much to open as a side effect of adding one file in it: the
@@ -299,11 +264,6 @@ impl RootStore {
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| root.path.to_string_lossy().into_owned()),
             kind: if root.kind == SourceKind::File { "file" } else { "folder" },
-            github: root.github.as_ref().map(|g| GithubInfo {
-                repo: g.repo.clone(),
-                git_ref: g.git_ref.clone(),
-                sub: g.sub.clone(),
-            }),
             missing: if root.kind == SourceKind::File { !root.path.is_file() } else { !root.path.is_dir() },
         }
     }
@@ -331,11 +291,11 @@ impl RootStore {
         if real.parent().is_none() {
             return fail(Kind::BadRequest, "The whole disk cannot be added. Pick a folder.");
         }
-        self.put(Root { id: root_id(&real), path: real, kind: SourceKind::Folder, github: None })
+        self.put(Root { id: root_id(&real), path: real, kind: SourceKind::Folder })
     }
 
     /// One `.md` file. Only that file can be opened, plus images in its own folder or below.
-    pub fn add_file(&mut self, input: &str, github: Option<Github>) -> Result<RootInfo, GuardError> {
+    pub fn add_file(&mut self, input: &str) -> Result<RootInfo, GuardError> {
         let input = input.trim();
         if input.is_empty() || input.contains('\0') {
             return fail(Kind::BadRequest, "Give the path of a Markdown file.");
@@ -354,23 +314,7 @@ impl RootStore {
         if !has_ext(&real, DOC_EXTS) {
             return fail(Kind::Forbidden, "Only Markdown (.md) files can be added.");
         }
-        if let Some(github) = &github {
-            require_inside_copy(&real, github)?;
-        }
-        self.put(Root { id: root_id(&real), path: real, kind: SourceKind::File, github })
-    }
-
-    /// A downloaded copy of a GitHub folder (`github.rs` made it and says where it is).
-    pub fn add_github_folder(&mut self, dir: &Path, github: Github) -> Result<RootInfo, GuardError> {
-        self.load();
-        let Ok(real) = fs::canonicalize(dir) else {
-            return fail(Kind::NotFound, "That folder does not exist.");
-        };
-        if !real.is_dir() {
-            return fail(Kind::BadRequest, "That path is a file, not a folder.");
-        }
-        require_inside_copy(&real, &github)?;
-        self.put(Root { id: root_id(&real), path: real, kind: SourceKind::Folder, github: Some(github) })
+        self.put(Root { id: root_id(&real), path: real, kind: SourceKind::File })
     }
 
     fn put(&mut self, root: Root) -> Result<RootInfo, GuardError> {
@@ -387,10 +331,6 @@ impl RootStore {
 
     pub fn config_file(&self) -> PathBuf {
         self.file.clone()
-    }
-
-    pub fn get(&self, id: &str) -> Option<Root> {
-        self.roots.iter().find(|r| r.id == id).cloned()
     }
 
     /// Returns the entry that was removed.
@@ -426,10 +366,6 @@ impl RootStore {
         let Ok(source_real) = fs::canonicalize(&root.path) else {
             return fail(Kind::NotFound, if single { "The file no longer exists." } else { "The folder no longer exists." });
         };
-        // A repository may hold links; a downloaded source never reads outside its own copy.
-        if let Some(github) = &root.github {
-            require_inside_copy(&source_real, github)?;
-        }
         let root_real = match (single, source_real.parent()) {
             (true, Some(parent)) => parent.to_path_buf(),
             (true, None) => return fail(Kind::NotFound, "The file no longer exists."),
@@ -747,7 +683,7 @@ mod tests {
     #[test]
     fn a_single_file_only_that_file_opens_plus_images_in_its_folder_or_below() {
         let mut f = fixture();
-        let id = f.store.add_file(f.root.join("a.md").to_str().unwrap(), None).unwrap().id;
+        let id = f.store.add_file(f.root.join("a.md").to_str().unwrap()).unwrap().id;
         assert_eq!(f.store.list().iter().find(|r| r.id == id).unwrap().kind, "file");
         assert_eq!(f.store.resolve_inside(&id, "a.md", DOC_EXTS).unwrap().file, f.root.join("a.md"));
         let tree = f.store.tree(&id).unwrap();
@@ -762,7 +698,7 @@ mod tests {
         assert_eq!(kind(f.store.resolve_inside(&id, "../x.svg", IMAGE_EXTS)), Kind::Forbidden);
         assert_eq!(kind(f.store.resolve_inside(&id, "a.pdf", IMAGE_EXTS)), Kind::Forbidden);
         // A symlink added as the file is followed once, when it is added.
-        let via_link = f.store.add_file(f.root.join("escape.md").to_str().unwrap(), None).unwrap();
+        let via_link = f.store.add_file(f.root.join("escape.md").to_str().unwrap()).unwrap();
         assert_eq!(via_link.path, f.base.join("secret.md").to_string_lossy());
         fs::write(f.base.join("other.md"), "x").unwrap();
         assert_eq!(kind(f.store.resolve_inside(&via_link.id, "other.md", DOC_EXTS)), Kind::Forbidden);
@@ -777,38 +713,31 @@ mod tests {
     }
 
     #[test]
-    fn a_source_from_github_never_leads_outside_its_downloaded_copy() {
-        let mut f = fixture();
-        let github = |dir: &Path| Github { repo: "octo/notes".into(), git_ref: "main".into(), sub: "sub".into(), dir: dir.to_string_lossy().into_owned() };
-        // Links committed in a repository: a folder and a file that point out of the copy.
-        let _ = symlink(&f.base, f.root.join("up")); // the fixture may have it
-        assert_eq!(f.store.add_github_folder(&f.root.join("up"), github(&f.root)).unwrap_err().kind, Kind::Forbidden);
-        assert_eq!(f.store.add_file(f.root.join("escape.md").to_str().unwrap(), Some(github(&f.root))).unwrap_err().kind, Kind::Forbidden);
-        assert_eq!(f.store.add_github_folder(&f.root.join("sub"), github(&f.base.join("nowhere"))).unwrap_err().kind, Kind::Forbidden);
-        let id = f.store.add_github_folder(&f.root.join("sub"), github(&f.root)).unwrap().id;
-        assert_eq!(f.store.resolve_inside(&id, "c.md", DOC_EXTS).unwrap().rel, "c.md");
-        // An update turns the folder into a link: nothing is read through it.
-        fs::remove_dir_all(f.root.join("sub")).unwrap();
-        symlink(&f.base, f.root.join("sub")).unwrap();
-        assert_eq!(kind(f.store.resolve_inside(&id, "secret.md", DOC_EXTS)), Kind::Forbidden);
+    fn a_copy_downloaded_by_an_earlier_version_is_not_opened() {
+        let f = fixture();
+        let sub = f.root.join("sub").to_string_lossy().into_owned();
+        let old = serde_json::json!({ "path": sub, "kind": "folder", "github": { "repo": "octo/notes", "ref": "main", "sub": "", "dir": sub } });
+        fs::write(&f.store.file, serde_json::json!({ "roots": [old, f.root.join("sub")] }).to_string()).unwrap();
+        let store = RootStore::new(f.store.file.clone());
+        assert_eq!(store.list().len(), 1, "only the plain folder is a source");
     }
 
     #[test]
     fn add_file_refuses_folders_other_file_types_and_missing_files() {
         let mut f = fixture();
         let root = f.root.clone();
-        let add = |store: &mut RootStore, p: PathBuf| store.add_file(p.to_str().unwrap(), None).expect_err("refused").kind;
+        let add = |store: &mut RootStore, p: PathBuf| store.add_file(p.to_str().unwrap()).expect_err("refused").kind;
         assert_eq!(add(&mut f.store, root.clone()), Kind::BadRequest);
         assert_eq!(add(&mut f.store, root.join("a.pdf")), Kind::Forbidden);
         assert_eq!(add(&mut f.store, root.join("disguised.md")), Kind::Forbidden);
         assert_eq!(add(&mut f.store, root.join("nope.md")), Kind::NotFound);
-        assert_eq!(f.store.add_file("a.md", None).expect_err("refused").kind, Kind::BadRequest);
+        assert_eq!(f.store.add_file("a.md").expect_err("refused").kind, Kind::BadRequest);
     }
 
     #[test]
     fn folders_and_single_files_are_kept_together_in_the_config_file() {
         let mut f = fixture();
-        let file = f.store.add_file(f.root.join("sub/c.md").to_str().unwrap(), None).unwrap();
+        let file = f.store.add_file(f.root.join("sub/c.md").to_str().unwrap()).unwrap();
         let config = f.base.join("config").join("config.json");
         let saved: serde_json::Value = serde_json::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
         assert_eq!(

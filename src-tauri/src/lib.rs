@@ -1,9 +1,10 @@
 //! md-reader desktop app. The window shows the same front end as the web version (`public/`);
-//! these commands are its back end. Nothing here reads a file except through
-//! `RootStore::resolve_inside`.
+//! these commands are its back end for what is on this computer: local folders and files, the
+//! config file, the token file. Sources on GitHub are read by the page itself. Nothing here
+//! reads a note or an image except through `RootStore::resolve_inside`.
 
-mod github;
 mod roots;
+mod token;
 
 use notify::event::{AccessKind, AccessMode};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -61,76 +62,18 @@ fn add_root(state: State<'_, AppState>, path: String) -> CommandResult<RootInfo>
 
 #[tauri::command]
 fn add_file(state: State<'_, AppState>, path: String) -> CommandResult<RootInfo> {
-    state.store.lock().unwrap().add_file(&path, None).map_err(message)
+    state.store.lock().unwrap().add_file(&path).map_err(message)
 }
 
 #[tauri::command]
 fn remove_root(state: State<'_, AppState>, id: String) -> CommandResult<()> {
-    let removed = state.store.lock().unwrap().remove(&id).map_err(message)?;
-    github::discard(&removed); // a source from GitHub takes its downloaded copy with it
+    state.store.lock().unwrap().remove(&id).map_err(message)?;
     // Stop watching a note of the folder that was just removed.
     let mut watched = state.watcher.lock().unwrap();
     if watched.as_ref().is_some_and(|w| w.root == id) {
         *watched = None;
     }
     Ok(())
-}
-
-/// A source that was just added from GitHub, and the submodules in it that could not be read.
-#[derive(Serialize)]
-struct Added {
-    #[serde(flatten)]
-    root: RootInfo,
-    skipped: Vec<String>,
-}
-
-/// A folder or one `.md` file of a GitHub repository: downloaded, then added like a local one.
-/// The store is not locked while `git` runs.
-#[tauri::command]
-async fn add_github(state: State<'_, AppState>, url: String, sub: Option<String>) -> CommandResult<Added> {
-    let mut spec = github::parse_github_url(&url).map_err(message)?;
-    if let Some(sub) = sub.filter(|s| !s.is_empty()) {
-        spec = github::with_folder(spec, &sub).map_err(message)?;
-    }
-    let config = state.store.lock().unwrap().config_file();
-    let wanted = spec.clone();
-    let got = blocking(move || github::download(&wanted, &config)).await?;
-    let mut store = state.store.lock().unwrap();
-    let kept = got.github.clone();
-    let skipped = got.skipped;
-    let added = match spec.kind {
-        roots::SourceKind::File => store.add_file(&got.target.to_string_lossy(), Some(got.github)),
-        roots::SourceKind::Folder => store.add_github_folder(&got.target, got.github),
-    };
-    if added.is_err() {
-        github::discard_copy(&kept);
-    }
-    added.map(|root| Added { root, skipped }).map_err(message)
-}
-
-/// The folders of a repository that hold notes, to choose from before anything is downloaded.
-#[tauri::command]
-async fn github_folders(state: State<'_, AppState>, url: String) -> CommandResult<github::Listing> {
-    let spec = github::parse_github_url(&url).map_err(message)?;
-    let config = state.store.lock().unwrap().config_file();
-    blocking(move || github::folders(&spec, &config)).await
-}
-
-#[tauri::command]
-async fn update_github(state: State<'_, AppState>, root: String) -> CommandResult<github::Changes> {
-    let (source, config) = {
-        let store = state.store.lock().unwrap();
-        (store.get(&root).ok_or("Unknown folder.")?, store.config_file())
-    };
-    blocking(move || github::update(&source, &config)).await
-}
-
-/// Runs `git` work on a thread of its own, so a slow download holds up nothing else.
-async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, GuardError> + Send + 'static) -> CommandResult<T> {
-    match tauri::async_runtime::spawn_blocking(work).await {
-        Ok(result) => result.map_err(message),
-        Err(_) => Err("The download was interrupted.".into()),
-    }
 }
 
 /// The sources on GitHub are the page's own (`public/web-backend.js`); this only keeps them.
@@ -147,24 +90,19 @@ fn save_github_sources(state: State<'_, AppState>, sources: serde_json::Value) -
 /// The saved token, for the page, which sends it to GitHub's API with its requests.
 #[tauri::command]
 fn github_token(state: State<'_, AppState>) -> Option<String> {
-    github::read_token(&state.store.lock().unwrap().config_file())
+    token::read_token(&state.store.lock().unwrap().config_file())
 }
 
-/// The page can save or forget the token and ask whether one is saved.
-#[tauri::command]
-fn github_token_status(state: State<'_, AppState>) -> bool {
-    github::has_token(&state.store.lock().unwrap().config_file())
-}
-
+/// The page can save the token or forget it.
 #[tauri::command]
 fn set_github_token(state: State<'_, AppState>, token: String) -> CommandResult<bool> {
-    github::save_token(&state.store.lock().unwrap().config_file(), &token).map_err(message)?;
+    token::save_token(&state.store.lock().unwrap().config_file(), &token).map_err(message)?;
     Ok(true)
 }
 
 #[tauri::command]
 fn clear_github_token(state: State<'_, AppState>) -> bool {
-    github::clear_token(&state.store.lock().unwrap().config_file());
+    token::clear_token(&state.store.lock().unwrap().config_file());
     false
 }
 
@@ -332,13 +270,9 @@ pub fn run() {
             list_roots,
             add_root,
             add_file,
-            add_github,
-            github_folders,
-            update_github,
             get_github_sources,
             save_github_sources,
             github_token,
-            github_token_status,
             set_github_token,
             clear_github_token,
             remove_root,

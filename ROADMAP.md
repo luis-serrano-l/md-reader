@@ -9,7 +9,9 @@ private repositories; the web version reads GitHub. Both read the submodules ins
 folder.
 
 The Node server that once served the page on localhost is gone: the desktop app is the only
-code that reads the disk.
+code that reads the disk. So is the desktop app's own GitHub code, which cloned with `git`:
+both versions now read GitHub through `public/web-backend.js`, and Rust keeps local sources,
+the config file and the token file.
 
 ## Still open
 
@@ -30,16 +32,16 @@ desktop program, not a second back end.
 
 ## Not tried yet
 
-- Submodules in the web version against GitHub itself (tried in Chrome against a made-up
-  GitHub, and in the tests), and a private submodule with a real token in either version.
-  The desktop code downloaded and updated a public repository with a submodule.
-- A private repository with a real token, in the desktop app.
-- The web version with no network at all.
-- Adding from GitHub by typing in the desktop window, the folder list included (the same Rust
-  code is covered by a test that lists and downloads a public repository; the dialog was
-  tried in Chrome).
-- The desktop app cannot ask GitHub whether a token is accepted when it is saved (it has no
-  HTTP library); a wrong token shows at the first download.
+- Submodules against GitHub itself (tried in Chrome against a made-up GitHub, and in the
+  tests), and a private submodule with a real token.
+- A private repository with a real token, in the desktop app. Its images, which the page
+  fetches itself there, were tried in Chrome against a made-up GitHub, in both views.
+- The web version with no network at all, and the desktop app without one (it should list the
+  GitHub sources and say that GitHub could not be reached when a note is opened).
+- Adding, updating and removing a GitHub source in the desktop window itself. The window was
+  tried with a source already in a scratch config: it listed it and opened a note of a public
+  repository from GitHub. The dialogs were tried in Chrome with a stand-in for Tauri, against
+  GitHub itself.
 - Full screen, book mode and the page under the clock on a real iPhone or iPad (tried in
   Chrome with device emulation only).
 - Reloading a note in pages view when its file changes, and printing from the desktop window.

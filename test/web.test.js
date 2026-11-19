@@ -1,5 +1,5 @@
-// The hosted version's guard and tree builder (public/web-backend.js). The rest of that file
-// needs a browser and GitHub, so it is not covered here.
+// The guard and the tree builder of GitHub sources (public/web-backend.js), and the list of
+// notes against a stand-in for GitHub. What needs a browser is not covered here.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { internals } from '../public/web-backend.js';
