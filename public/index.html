@@ -132,6 +132,24 @@
           <output id="mdr-set-size-value" for="mdr-set-size"></output>
         </div>
       </div>
+      <h3>Page</h3>
+      <div class="settings-grid">
+        <label for="mdr-set-margins">Margins</label>
+        <div class="settings-size">
+          <input type="range" id="mdr-set-margins">
+          <output id="mdr-set-margins-value" for="mdr-set-margins"></output>
+        </div>
+        <label for="mdr-set-leading">Line spacing</label>
+        <div class="settings-size">
+          <input type="range" id="mdr-set-leading">
+          <output id="mdr-set-leading-value" for="mdr-set-leading"></output>
+        </div>
+        <span id="mdr-justify-label">Lines</span>
+        <div class="segmented" role="group" aria-labelledby="mdr-justify-label">
+          <button type="button" id="mdr-set-justify-off" aria-pressed="true">Natural</button>
+          <button type="button" id="mdr-set-justify-on" aria-pressed="false">Full width</button>
+        </div>
+      </div>
       <h3>Colours</h3>
       <div class="settings-grid" id="mdr-set-colors"></div>
       <p class="picker-error" id="mdr-settings-error" role="alert"></p>

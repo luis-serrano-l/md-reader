@@ -99,10 +99,13 @@ file busy".
   already-cut pages. It needs a real browser layout, so it has no unit test.
 - `public/icons.js`: the icons of the shell, as SVG path data. `icon(name)` builds the element
   with DOM calls (no inline style); a button in `index.html` names its icon with `data-icon`.
-- `public/settings.js`: fonts and colours. Pure data and functions, tested in
+- `public/settings.js`: fonts, colours and the page (margins, space between lines, lines spread
+  to the full width). Pure data and functions, tested in
   `test/settings.test.js`. A setting only ever becomes a CSS custom property; `normalize()`
-  drops anything that is not a known look, a listed font, a size in range or a `#rrggbb`
-  colour. The desktop app stores them under `settings` in the config file, written one key
+  drops anything that is not a known look, a listed font, a number in its range, `true` or a
+  `#rrggbb` colour. Margins are a factor (`--margins`) that every margin formula in `study.css`
+  and the full-screen one in `app.css` is multiplied by: a new formula needs it too. Printing
+  keeps the `@page` margins. The desktop app stores them under `settings` in the config file, written one key
   at a time (`write()`), keeping the rest as it is on disk; the web version uses `localStorage`.
 - `public/backend.js`: the only file that knows which back end is there. `window.__TAURI__`
   present: `desktopBackend`, which sends a call to Tauri commands or to the GitHub back end

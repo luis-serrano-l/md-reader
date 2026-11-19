@@ -42,13 +42,17 @@
   --page-width: 8.5in;
   --margin-y: 0.9in;
   --margin-x: 1.4in;
+  --margins: 1;               /* the reader's choice: every margin below is taken this many times */
+  --align: left;
+  --hyphens: manual;
 
   box-sizing: border-box;
   width: var(--page-width);
   max-width: 100%;
   /* Side margins are the PDF's (1.4in) on a full-width sheet and shrink faster than the sheet
      on a narrow one (tablet upright, phone), so the text column is never squeezed. */
-  padding: clamp(20px, 10.5%, var(--margin-y)) clamp(16px, calc((100% - 340px) * 0.3), var(--margin-x));
+  padding: clamp(calc(20px * var(--margins)), calc(10.5% * var(--margins)), calc(var(--margin-y) * var(--margins)))
+           clamp(calc(16px * var(--margins)), calc((100% - 340px) * 0.3 * var(--margins)), calc(var(--margin-x) * var(--margins)));
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-body);
@@ -69,9 +73,11 @@
 .sheet > :first-child { margin-top: 0; }
 .sheet > :last-child { margin-bottom: 0; }
 
-.sheet p { margin: 0 0 10pt; text-align: left; }
+/* --align and --hyphens: lines end where the words do, or (the reader's choice) every line is
+   spread up to the right margin, with words broken where the browser has a dictionary. */
+.sheet p { margin: 0 0 10pt; text-align: var(--align); -webkit-hyphens: var(--hyphens); hyphens: var(--hyphens); }
 .sheet ul, .sheet ol { margin: 0 0 10pt; padding-left: 22pt; }
-.sheet li { margin: 4pt 0; }
+.sheet li { margin: 4pt 0; text-align: var(--align); -webkit-hyphens: var(--hyphens); hyphens: var(--hyphens); }
 .sheet li > ul, .sheet li > ol { margin-bottom: 0; }
 .sheet li::marker { color: var(--accent); }
 .sheet strong { color: var(--strong); }
@@ -123,7 +129,8 @@
 .sheet.paged { background: none; padding: 0; counter-reset: mdr-page; }
 .sheet.paged > .page { box-sizing: border-box; position: relative; display: flex; flex-direction: column;
                        aspect-ratio: 8.5 / 11; background: var(--paper); /* Letter, at any width */
-                       padding: clamp(20px, 10.5%, var(--margin-y)) clamp(16px, calc((100% - 340px) * 0.3), var(--margin-x));
+                       padding: clamp(calc(20px * var(--margins)), calc(10.5% * var(--margins)), calc(var(--margin-y) * var(--margins)))
+                                clamp(calc(16px * var(--margins)), calc((100% - 340px) * 0.3 * var(--margins)), calc(var(--margin-x) * var(--margins)));
                        counter-increment: mdr-page; scroll-margin-top: 12px; }
 @supports not (aspect-ratio: 1) {
   .sheet.paged > .page { min-height: calc(var(--page-width) * 11 / 8.5); } /* older browsers: full-size Letter */
@@ -141,10 +148,11 @@
    on a screen wider than a sheet they grow, so the lines keep the length they have on paper. */
 .app.book .sheet.paged { display: flex; width: max-content; max-width: none; }
 .app.book .sheet.paged > .page {
-  --pad-y: clamp(24px, min(calc(var(--book-w) * 0.105), calc(var(--book-h) * 0.08)), var(--margin-y));
+  --pad-y: clamp(calc(24px * var(--margins)), calc(min(var(--book-w) * 0.105, var(--book-h) * 0.08) * var(--margins)), calc(var(--margin-y) * var(--margins)));
   flex: none; width: var(--book-w); height: var(--book-h); min-height: 0; aspect-ratio: auto;
   padding: max(var(--pad-y), calc(env(safe-area-inset-top) + 10px))
-           max(clamp(16px, calc((var(--book-w) - 340px) * 0.3), var(--margin-x)), calc((var(--book-w) - var(--page-width)) / 2 + var(--margin-x)))
+           max(clamp(calc(16px * var(--margins)), calc((var(--book-w) - 340px) * 0.3 * var(--margins)), calc(var(--margin-x) * var(--margins))),
+               calc((var(--book-w) - var(--page-width)) / 2 + var(--margin-x) * var(--margins)))
            max(var(--pad-y), calc(env(safe-area-inset-bottom) + 22px));
   scroll-snap-align: start; scroll-margin-top: 0;
 }

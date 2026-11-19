@@ -1,4 +1,4 @@
-// Fonts and colours of the note. Pure data and functions (no DOM), so the tests can import it.
+// Fonts, colours and page layout of the note. Pure data and functions (no DOM), so the tests can import it.
 // A setting only ever becomes a CSS custom property: `variables()` returns the properties to
 // set on the sheet (study.css) and on the page (app.css). Nothing else in the app changes.
 
@@ -66,6 +66,10 @@ export const FONTS = {
 };
 
 export const SIZE = { min: 9, max: 16, step: 0.5, default: 11.5 };
+// Margins: how many times the look's own (which already shrink on a narrow screen).
+export const MARGINS = { min: 0.5, max: 1.5, step: 0.1, default: 1 };
+// Space between lines, as a line height. No default: a look has its own (1.6, the dark one more).
+export const LEADING = { min: 1.2, max: 2, step: 0.05, study: 1.6 };
 
 // The colours that can be changed one by one, and the properties each one sets.
 export const COLORS = {
@@ -75,7 +79,7 @@ export const COLORS = {
   accent: { label: 'Accent (links, list marks)', vars: ['--accent'] },
 };
 
-export const DEFAULTS = Object.freeze({ preset: 'study', body: 'charter', head: 'noto-sans', mono: 'fira', size: SIZE.default, colors: {} });
+export const DEFAULTS = Object.freeze({ preset: 'study', body: 'charter', head: 'noto-sans', mono: 'fira', size: SIZE.default, margins: MARGINS.default, leading: null, justify: false, colors: {} });
 
 const HEX = /^#[0-9a-f]{6}$/i;
 
@@ -86,6 +90,12 @@ export function normalize(raw) {
   const own = (object, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(object, key);
   const pick = (table, value, fallback) => (own(table, value) ? value : fallback);
   const size = typeof input.size === 'number' || (typeof input.size === 'string' && input.size.trim()) ? Number(input.size) : NaN;
+  const number = (value) => (typeof value === 'number' || (typeof value === 'string' && value.trim()) ? Number(value) : NaN);
+  // A number inside its range, on a step of the control; anything else is the fallback.
+  const inRange = (value, { min, max, step }, fallback) => {
+    const n = number(value);
+    return Number.isFinite(n) ? Number((Math.round(Math.min(max, Math.max(min, n)) / step) * step).toFixed(2)) : fallback;
+  };
   const colors = {};
   const given = input.colors && typeof input.colors === 'object' ? input.colors : {};
   for (const name of Object.keys(COLORS)) {
@@ -97,6 +107,9 @@ export function normalize(raw) {
     head: pick(FONTS.head, input.head, DEFAULTS.head),
     mono: pick(FONTS.mono, input.mono, DEFAULTS.mono),
     size: Number.isFinite(size) ? Math.min(SIZE.max, Math.max(SIZE.min, Math.round(size * 2) / 2)) : DEFAULTS.size,
+    margins: inRange(input.margins, MARGINS, DEFAULTS.margins),
+    leading: inRange(input.leading, LEADING, null),
+    justify: input.justify === true,
     colors,
   };
 }
@@ -111,10 +124,19 @@ export function variables(raw) {
   if (s.head !== DEFAULTS.head) sheet['--font-head'] = FONTS.head[s.head].stack;
   if (s.mono !== DEFAULTS.mono) sheet['--font-mono'] = FONTS.mono[s.mono].stack;
   if (s.size !== DEFAULTS.size) sheet['--size-body'] = `${s.size}pt`;
+  if (s.margins !== DEFAULTS.margins) sheet['--margins'] = String(s.margins);
+  if (s.leading !== null) sheet['--leading'] = String(s.leading);
+  if (s.justify) Object.assign(sheet, { '--align': 'justify', '--hyphens': 'auto' });
   for (const [name, value] of Object.entries(s.colors)) {
     for (const property of COLORS[name].vars) sheet[property] = value;
   }
   return { sheet, ui: { ...preset.ui }, scheme: preset.scheme || 'light' };
+}
+
+// The line height the control shows: the chosen one, else the look's own.
+export function shownLeading(raw) {
+  const s = normalize(raw);
+  return s.leading ?? (Number(PRESETS[s.preset].sheet['--leading']) || LEADING.study);
 }
 
 // The colour a control shows when the user has not chosen one: the preset's, else the study look's.

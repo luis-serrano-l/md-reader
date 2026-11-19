@@ -315,7 +315,7 @@ details[open] > summary::before { transform: rotate(45deg); margin-bottom: 3px; 
 .app.reading .desk { padding: 0; }
 .app.reading .desk .sheet, .app.reading .desk .sheet.paged > .page { outline: 0; box-shadow: none; }
 /* The paper runs up under the clock; the first line starts below it. */
-.app.reading .desk .sheet:not(.paged) { padding-top: max(clamp(21px, 10.5%, var(--margin-y)), calc(env(safe-area-inset-top) + 13px)); }
+.app.reading .desk .sheet:not(.paged) { padding-top: max(clamp(calc(21px * var(--margins)), calc(10.5% * var(--margins)), calc(var(--margin-y) * var(--margins))), calc(env(safe-area-inset-top) + 13px)); }
 /* Book mode (full screen in pages view): the pages lie side by side and the desk moves
    sideways, one screen at a time. The pages themselves are sized in study.css. */
 .app.book .desk { overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain;

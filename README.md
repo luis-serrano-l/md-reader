@@ -182,7 +182,8 @@ and the page installs as an app on a phone or tablet.
 
 The sliders button opens **View, fonts and colours**: continuous or pages view, three looks
 (Study, Plain white, and Dark: warm charcoal paper with light headings, made for reading at night), the fonts of the text, headings and code,
-the text size, and four colours (paper, text, headings, accent). Everything is remembered.
+the text size, the page (margins, space between lines, and whether every line is spread up to the
+right margin), and four colours (paper, text, headings, accent). Everything is remembered.
 
 On a tablet held upright or a phone, the list of sources lies over the note and a tap on the
 note puts it away; the page margins shrink so the text keeps its width.

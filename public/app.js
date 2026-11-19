@@ -5,7 +5,7 @@ import { createRenderer } from './render.js';
 import { paginate, currentPage } from './pages.js';
 import { icon, setIcon, fillIcons } from './icons.js';
 import { isRef } from './github-url.js';
-import { PRESETS, FONTS, SIZE, COLORS, DEFAULTS, normalize, variables, shownColor } from './settings.js';
+import { PRESETS, FONTS, SIZE, MARGINS, LEADING, COLORS, DEFAULTS, normalize, variables, shownColor, shownLeading } from './settings.js';
 
 const render = createRenderer({
   MarkdownIt: window.markdownit,
@@ -746,7 +746,7 @@ function changeSettings(patch) {
   $('mdr-settings-error').textContent = '';
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveSettingsNow, 400);
-  // Another font or size moves the page breaks.
+  // Another font, size, margin or line spacing moves the page breaks.
   relayoutSoon();
 }
 
@@ -772,6 +772,12 @@ function fillSettingsForm() {
   $('mdr-set-mono').value = settings.mono;
   $('mdr-set-size').value = settings.size;
   $('mdr-set-size-value').textContent = `${settings.size} pt`;
+  $('mdr-set-margins').value = settings.margins;
+  $('mdr-set-margins-value').textContent = `${Math.round(settings.margins * 100)}%`;
+  $('mdr-set-leading').value = shownLeading(settings);
+  $('mdr-set-leading-value').textContent = shownLeading(settings).toFixed(2);
+  $('mdr-set-justify-off').setAttribute('aria-pressed', String(!settings.justify));
+  $('mdr-set-justify-on').setAttribute('aria-pressed', String(settings.justify));
   for (const name of Object.keys(COLORS)) {
     $(`mdr-set-color-${name}`).value = shownColor(settings, name);
     $(`mdr-set-color-${name}-reset`).hidden = !settings.colors[name];
@@ -784,8 +790,14 @@ function buildSettingsForm() {
   fillSelect($('mdr-set-head'), FONTS.head);
   fillSelect($('mdr-set-mono'), FONTS.mono);
   Object.assign($('mdr-set-size'), { min: SIZE.min, max: SIZE.max, step: SIZE.step });
-  // Choosing a look starts from that look's own colours.
-  $('mdr-set-preset').addEventListener('change', (e) => changeSettings({ preset: e.target.value, colors: {} }));
+  Object.assign($('mdr-set-margins'), { min: MARGINS.min, max: MARGINS.max, step: MARGINS.step });
+  Object.assign($('mdr-set-leading'), { min: LEADING.min, max: LEADING.max, step: LEADING.step });
+  // Choosing a look starts from that look's own colours and line spacing.
+  $('mdr-set-preset').addEventListener('change', (e) => changeSettings({ preset: e.target.value, colors: {}, leading: null }));
+  $('mdr-set-margins').addEventListener('input', (e) => changeSettings({ margins: Number(e.target.value) }));
+  $('mdr-set-leading').addEventListener('input', (e) => changeSettings({ leading: Number(e.target.value) }));
+  $('mdr-set-justify-off').addEventListener('click', () => changeSettings({ justify: false }));
+  $('mdr-set-justify-on').addEventListener('click', () => changeSettings({ justify: true }));
   for (const key of ['body', 'head', 'mono']) {
     $(`mdr-set-${key}`).addEventListener('change', (e) => changeSettings({ [key]: e.target.value }));
   }
